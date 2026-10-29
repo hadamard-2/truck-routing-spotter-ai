@@ -8,6 +8,8 @@ from django.conf import settings
 from .errors import NotFound, UpstreamError
 
 SEARCH_URL = 'https://api.heigit.org/pelias/v1/search'
+AUTOCOMPLETE_URL = 'https://api.heigit.org/pelias/v1/autocomplete'
+SUGGESTIONS = 6
 REVERSE_URL = 'https://api.heigit.org/pelias/v1/reverse'
 TIMEOUT_S = 15
 
@@ -36,6 +38,29 @@ def geocode(text: str, field: str) -> Place:
     feature = features[0]
     lon, lat = feature['geometry']['coordinates']
     return Place(name=feature['properties'].get('label', text), lat=lat, lon=lon)
+
+
+def _place(feature: dict) -> Place:
+    lon, lat = feature['geometry']['coordinates']
+    return Place(name=feature['properties'].get('label') or feature['properties'].get('name', ''), lat=lat, lon=lon)
+
+
+def suggest(text: str) -> list[Place]:
+    """Places matching a partly typed address, best first, without repeated names."""
+    body = _get(AUTOCOMPLETE_URL, {'text': text})
+    places: dict[str, Place] = {}
+    for feature in body.get('features') or []:
+        place = _place(feature)
+        places.setdefault(place.name, place)
+    return list(places.values())[:SUGGESTIONS]
+
+
+def reverse(lat: float, lon: float) -> Place:
+    """The address nearest a point, keeping the point itself as the place's position."""
+    body = _get(REVERSE_URL, {'point.lat': lat, 'point.lon': lon, 'size': 1})
+    features = body.get('features') or []
+    name = _place(features[0]).name if features else f'{lat:.4f}, {lon:.4f}'
+    return Place(name=name, lat=lat, lon=lon)
 
 
 def town_near(lat: float, lon: float) -> str | None:

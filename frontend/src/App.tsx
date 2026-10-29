@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { ApiError, getHeatmap, planTrip } from '@/api/client'
-import type { Heatmap, Plan, PlanRequest } from '@/api/types'
+import type { Heatmap, Place, Plan, PlanRequest } from '@/api/types'
 import { MapView } from '@/components/MapView'
 import { RouteList } from '@/components/RouteList'
 import { TimeSlider } from '@/components/TimeSlider'
 import { TripForm } from '@/components/TripForm'
+import type { PickedPlace } from '@/components/TripForm'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,6 +60,8 @@ export default function App() {
   const [error, setError] = useState<ApiError | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [picked, setPicked] = useState<PickedPlace>()
+  const [draft, setDraft] = useState<Partial<Record<PickedPlace['field'], Place>>>({})
 
   // Esc leaves the expanded map, like closing a full-screen view.
   useEffect(() => {
@@ -71,7 +74,29 @@ export default function App() {
   function cancelEdit() {
     setEditing(false)
     setError(null)
+    setDraft({})
     setFormKey((k) => k + 1)
+  }
+
+  function handlePick(field: PickedPlace['field'], place: Place) {
+    setPicked({ id: Date.now(), field, place })
+    setDraft((d) => ({ ...d, [field]: place }))
+    setEditing(true)
+  }
+
+  function loadHeatmap(next: Plan, retried = false) {
+    getHeatmap(next)
+      .then(setHeatmap)
+      .catch((e: ApiError) => {
+        if (e.code === 'weather_busy' && e.retryAfterS && !retried) {
+          toast('Weather layer is waiting on the weather service', {
+            description: `Trying again in ${e.retryAfterS} seconds.`,
+          })
+          setTimeout(() => loadHeatmap(next, true), e.retryAfterS * 1000)
+          return
+        }
+        toast.error('Weather layer unavailable', { description: e.message })
+      })
   }
 
   async function handlePlan(request: PlanRequest) {
@@ -85,9 +110,8 @@ export default function App() {
       setHeatmap(null)
       setEditing(false)
       setLastRequest(request)
-      getHeatmap(next)
-        .then(setHeatmap)
-        .catch((e: ApiError) => toast.error('Weather layer unavailable', { description: e.message }))
+      setDraft({})
+      loadHeatmap(next)
       if (!window.matchMedia('(min-width: 1024px)').matches) {
         requestAnimationFrame(() => mapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
       }
@@ -122,6 +146,7 @@ export default function App() {
             onSubmit={handlePlan}
             initial={lastRequest}
             onCancel={plan ? cancelEdit : undefined}
+            picked={picked}
           />
         </div>
       </header>
@@ -149,6 +174,8 @@ export default function App() {
             hour={hour}
             isExpanded={isExpanded}
             onToggleExpanded={() => setIsExpanded((v) => !v)}
+            onPick={handlePick}
+            draft={draft}
           />
         </div>
         {heatmap ? (

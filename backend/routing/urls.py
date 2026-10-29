@@ -6,4 +6,6 @@ urlpatterns = [
     path('health', views.health),
     path('plan', views.plan),
     path('heatmap', views.heatmap),
+    path('places', views.places),
+    path('places/reverse', views.reverse_place),
 ]

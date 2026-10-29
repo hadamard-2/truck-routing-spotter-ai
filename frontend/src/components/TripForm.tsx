@@ -2,7 +2,8 @@ import { CalendarIcon, FlagIcon, MapPinIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { SubmitEvent } from 'react'
 
-import type { PlanRequest } from '@/api/types'
+import type { Place, PlanRequest } from '@/api/types'
+import { PlaceField } from '@/components/PlaceField'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -12,6 +13,8 @@ import { TimePicker, TimePickerContent, TimePickerPanel, TimePickerTrigger } fro
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { formatDate, fromUtcIso, nextHour, toUtcIso } from '@/format'
+import { fromRequestPlace, toRequestPlace } from '@/lib/place'
+import type { PlaceValue } from '@/lib/place'
 
 interface Props {
   busy: boolean
@@ -21,6 +24,14 @@ interface Props {
   initial?: PlanRequest
   /** When set, shows a Cancel button that leaves the form without planning. */
   onCancel?: () => void
+  /** A place chosen on the map; each new `id` fills that field. */
+  picked?: PickedPlace
+}
+
+export interface PickedPlace {
+  id: number
+  field: 'origin' | 'destination'
+  place: Place
 }
 
 const INTERVALS = [10, 25, 50] as const
@@ -32,9 +43,11 @@ function startOfToday() {
 }
 type Interval = (typeof INTERVALS)[number]
 
-export function TripForm({ busy, fieldError, onSubmit, initial, onCancel }: Props) {
-  const [origin, setOrigin] = useState(initial?.origin ?? 'Dallas, TX')
-  const [destination, setDestination] = useState(initial?.destination ?? 'Denver, CO')
+export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked }: Props) {
+  const [origin, setOrigin] = useState<PlaceValue>(() => fromRequestPlace(initial?.origin ?? 'Dallas, TX'))
+  const [destination, setDestination] = useState<PlaceValue>(() =>
+    fromRequestPlace(initial?.destination ?? 'Denver, CO'),
+  )
   const [date, setDate] = useState(() => (initial ? fromUtcIso(initial.departure_time) : nextHour()).date)
   const [time, setTime] = useState(() => (initial ? fromUtcIso(initial.departure_time) : nextHour()).time)
   const [dateOpen, setDateOpen] = useState(false)
@@ -42,11 +55,20 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel }: Prop
   const [weight, setWeight] = useState(String(initial?.load_weight_lb ?? 42000))
   const [interval, setInterval] = useState<Interval>(initial?.sample_interval_mi ?? 25)
 
+  // Apply each new map pick once, while rendering, so the field updates in the same pass.
+  const [appliedPick, setAppliedPick] = useState(picked?.id)
+  if (picked && picked.id !== appliedPick) {
+    setAppliedPick(picked.id)
+    const value = { text: picked.place.name, point: { lat: picked.place.lat, lon: picked.place.lon } }
+    if (picked.field === 'origin') setOrigin(value)
+    else setDestination(value)
+  }
+
   function submit(event: SubmitEvent) {
     event.preventDefault()
     onSubmit({
-      origin: origin.trim(),
-      destination: destination.trim(),
+      origin: toRequestPlace(origin),
+      destination: toRequestPlace(destination),
       departure_time: toUtcIso(date, time),
       load_weight_lb: Number.parseInt(weight, 10),
       sample_interval_mi: interval,
@@ -61,39 +83,25 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel }: Prop
       <FieldGroup className="gap-5">
         <Field data-invalid={invalid('origin') || undefined}>
           <FieldLabel htmlFor="origin">From</FieldLabel>
-          <InputGroup>
-            <InputGroupAddon>
-              <MapPinIcon />
-            </InputGroupAddon>
-            <InputGroupInput
-              id="origin"
-              value={origin}
-              onChange={(e) => setOrigin(e.target.value)}
-              placeholder="City or address"
-              autoComplete="off"
-              required
-              aria-invalid={invalid('origin') || undefined}
-            />
-          </InputGroup>
+          <PlaceField
+            id="origin"
+            icon={<MapPinIcon />}
+            value={origin}
+            onChange={setOrigin}
+            invalid={invalid('origin')}
+          />
           {errorFor('origin')}
         </Field>
 
         <Field data-invalid={invalid('destination') || undefined}>
           <FieldLabel htmlFor="destination">To</FieldLabel>
-          <InputGroup>
-            <InputGroupAddon>
-              <FlagIcon />
-            </InputGroupAddon>
-            <InputGroupInput
-              id="destination"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="City or address"
-              autoComplete="off"
-              required
-              aria-invalid={invalid('destination') || undefined}
-            />
-          </InputGroup>
+          <PlaceField
+            id="destination"
+            icon={<FlagIcon />}
+            value={destination}
+            onChange={setDestination}
+            invalid={invalid('destination')}
+          />
           {errorFor('destination')}
         </Field>
 

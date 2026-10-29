@@ -9,7 +9,7 @@ from routing.risk import SCORE, classify
 from routing.services import weather
 from routing.services.checkpoints import sample
 from routing.services.geocoding import Place, geocode, town_near
-from routing.services.routes import RouteOption, route_options
+from routing.services.routes import RouteOption, distinct_highway, route_options
 
 SAMPLE_INTERVALS = (10, 25, 50)
 MAX_DEPARTURE_AHEAD = timedelta(days=14)
@@ -56,7 +56,8 @@ def _place(value, field: str) -> Place:
             raise InvalidInput(f'{field} needs numeric "lat" and "lon".', field) from None
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise InvalidInput(f'{field} is not a valid coordinate.', field)
-        return Place(name=f'{lat:.4f}, {lon:.4f}', lat=lat, lon=lon)
+        name = value.get('name')
+        return Place(name=name.strip() if isinstance(name, str) and name.strip() else f'{lat:.4f}, {lon:.4f}', lat=lat, lon=lon)
     if not isinstance(value, str) or not value.strip():
         raise InvalidInput(f'{field} is required.', field)
     return geocode(value.strip(), field)
@@ -80,9 +81,19 @@ def _validate_plan(data) -> tuple[datetime, int, int]:
 
 
 def _labels(options: list[RouteOption]) -> list[str]:
-    """'Direct', then 'Via <town near the middle of the route>' for each alternative."""
+    """'Direct', then each alternative named after the highway that sets it apart ('Via US 70').
+
+    Falls back to the town near the middle of the route, then to 'Alternative n'.
+    """
     labels = ['Direct']
+    taken: set[str] = set()
     for n, option in enumerate(options[1:], start=1):
+        others = [o for o in options if o is not option]
+        highway = distinct_highway(option, others, taken)
+        if highway:
+            taken.add(highway)
+            labels.append(f'Via {highway}')
+            continue
         mid = min(range(len(option.cum_mi)), key=lambda i: abs(option.cum_mi[i] - option.distance_mi / 2))
         lon, lat = option.coords[mid]
         town = town_near(lat, lon)

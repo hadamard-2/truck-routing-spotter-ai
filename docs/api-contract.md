@@ -28,7 +28,7 @@ Every risk value uses one string enum, with a fixed numeric score used for avera
 }
 ```
 
-- `origin`, `destination`: free text, geocoded by the backend. A `{ "lat": ..., "lon": ... }` object is also accepted (for "use my location").
+- `origin`, `destination`: free text, geocoded by the backend, or an exact point `{ "lat": ..., "lon": ..., "name": "..." }` (from a suggestion or a point picked on the map). `name` is optional and is echoed back as the place name; without it the name is the coordinates.
 - `sample_interval_mi`: one of `10`, `25`, `50`.
 - `load_weight_lb`: integer, > 0.
 
@@ -126,6 +126,20 @@ Weather risk over the trip corridor, hour by hour, for the slider.
 - Every array in a frame is aligned by index with `points`. `score` is the 0–4 risk score; the raw arrays let the UI switch the heatmap to a single condition. Values are `null` where the forecast has no data for that hour.
 - `points` is an even grid over `bbox` of at most about 250 points, so the response stays small and within the weather provider's per-minute limits.
 
+## `GET /api/places`
+
+Address suggestions while typing. `GET /api/places?text=Oklahoma%20Ci` returns up to 6 places, best first, with no repeated names:
+
+```json
+{ "places": [{ "name": "Oklahoma City, OK, USA", "lat": 35.393761, "lon": -97.602513 }] }
+```
+
+Text shorter than 2 characters returns an empty list.
+
+## `GET /api/places/reverse`
+
+The address nearest a point. `GET /api/places/reverse?lat=35.2&lon=-101.83` returns `{ "name": "Southeast 12th Avenue, Amarillo, TX, USA", "lat": 35.2, "lon": -101.83 }`. The returned position is the point asked about, not the address's own position.
+
 ## Errors
 
 Any non-2xx response has this body:
@@ -138,6 +152,7 @@ Any non-2xx response has this body:
 |---|---|
 | `400` | `invalid_input`, `geocode_not_found` |
 | `502` | `geocoding_unavailable`, `routing_unavailable`, `weather_unavailable` |
+| `503` | `weather_busy` (the weather provider's rate limit; the response carries `Retry-After` in seconds) |
 
 `field` is present only when the error belongs to one request field.
 

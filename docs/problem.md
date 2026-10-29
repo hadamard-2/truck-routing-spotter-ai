@@ -42,6 +42,8 @@ These follow directly from the spec's wording and were settled without needing a
 - Forecast hour: a checkpoint uses the forecast hour nearest its ETA (an ETA of 14:40 reads the 15:00 forecast), so the weather is never more than 30 minutes from the truck's arrival.
 - Beyond the forecast: checkpoints past the forecast horizon get no level and the response carries a `beyond_forecast` warning instead of failing.
 - Three routes: the direct route plus two forced through via points (see Findings), because the routing API's own alternatives stop at 100 km. A via route that drives more than 5 miles of road out and back (it snapped to a dead end) is retried with the via point at another distance, and a via route sharing over 85% of its road with a route already kept is dropped; the response then warns `fewer_routes`.
+- Route names: alternatives are named after the numbered highway (interstate, US or state route) they drive most beyond what any other route drives of it, e.g. "Via US 183", needing a margin of at least 20 miles. Without one, the town nearest the route's midpoint is used, then "Alternative n".
+- Weather retries: a rate-limited, failed or timed-out weather request is retried after 1 s and again after 3 s. Open-Meteo's limits are per minute, so if it is still rate-limited the API answers 503 `weather_busy` with `Retry-After: 60` rather than holding the request open for a minute; the web app retries the heatmap once after that wait.
 - Departure window: from 1 hour ago to 14 days ahead, the useful reach of the forecast.
 - Weather lookups are rounded to ~1 km (0.01°), finer than the forecast grid, and the heatmap grid holds at most about 250 points, to stay within Open-Meteo's per-minute request limit (each location counts as a request).
 

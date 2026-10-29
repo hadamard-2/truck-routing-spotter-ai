@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 
 from routing.services.checkpoints import sample
-from routing.services.routes import doubled_back_mi, parse_feature, shared_road, via_point
+from routing.services.routes import (
+    distinct_highway,
+    doubled_back_mi,
+    highways_in,
+    parse_feature,
+    shared_road,
+    via_point,
+)
 
 CAPTURE = json.loads((Path(__file__).parents[1] / 'fixtures' / 'ors_dallas_denver.json').read_text())
 DEPARTURE = datetime(2026, 10, 30, 14, tzinfo=UTC)
@@ -60,3 +67,22 @@ def test_etas_follow_road_speed_not_a_constant_average():
     checkpoints = sample(route, 25, DEPARTURE)
     hours = [(b.eta - a.eta).total_seconds() / 3600 for a, b in zip(checkpoints, checkpoints[1:-1])]
     assert max(hours) - min(hours) > 0.05
+
+
+@pytest.mark.parametrize('name, refs', [
+    ('South Dumas Avenue, US 87, US 287', ['US 87', 'US 287']),
+    ('I 40;I 27', []),
+    ('I 40, Ranch Road', ['I 40']),
+    ('South Wansted Street, US 287, CR 40', ['US 287']),
+    ('FM 51, TX 114', ['TX 114']),
+    ('-', []),
+])
+def test_highways_in_step_names(name, refs):
+    assert highways_in(name) == refs
+
+
+def test_alternatives_are_named_by_the_highway_only_they_use():
+    direct, sw, ne = option('direct'), option('via_sw'), option('via_ne')
+    assert distinct_highway(sw, [direct, ne], set()) == 'TX 114'
+    assert distinct_highway(ne, [direct, sw], set()) == 'US 183'
+    assert distinct_highway(sw, [direct, ne], {'TX 114'}) != 'TX 114'

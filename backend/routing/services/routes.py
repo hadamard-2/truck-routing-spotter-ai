@@ -6,8 +6,10 @@ docs/problem.md, "Findings").
 """
 
 import math
+import re
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 from django.conf import settings
@@ -26,6 +28,13 @@ MAX_DOUBLED_BACK_MI = 5.0
 # A via route sharing more than this share of the direct route's road is not a real alternative.
 MAX_SHARED_ROAD = 0.85
 
+# Numbered highways worth naming a route after: interstates, US routes and state routes
+# ("I 35", "US 287", "TX 114"). County and farm roads are too local to recognise.
+HIGHWAY = re.compile(r'^(I|US|[A-Z]{2})[ -]?\d+[A-Z]?$')
+LOCAL_ROAD_PREFIXES = ('CR', 'FM', 'RM')
+# A highway names a route only if the route drives at least this much more of it than any other route.
+MIN_DISTINCT_HIGHWAY_MI = 20
+
 
 @dataclass
 class RouteOption:
@@ -35,6 +44,13 @@ class RouteOption:
     distance_mi: float
     duration_s: float
     via: tuple[float, float] | None = None  # (lon, lat) the route was forced through
+    highway_mi: Counter[str] = field(default_factory=Counter)  # miles driven on each numbered highway
+
+
+def highways_in(step_name: str) -> list[str]:
+    """Numbered highways in an ORS step name such as "South Dumas Avenue, US 87, US 287"."""
+    refs = (part.strip() for part in step_name.split(','))
+    return [r for r in refs if HIGHWAY.match(r) and not r.startswith(LOCAL_ROAD_PREFIXES)]
 
 
 def parse_feature(feature: dict) -> RouteOption:
@@ -56,15 +72,18 @@ def parse_feature(feature: dict) -> RouteOption:
 
     cum_s = [0.0] * len(coords)
     elapsed = 0.0
+    highway_mi: Counter[str] = Counter()
     for segment in feature['properties']['segments']:
         for step in segment['steps']:
+            for ref in highways_in(step.get('name', '')):
+                highway_mi[ref] += step['distance']
             start, end = step['way_points']
             span = cum_mi[end] - cum_mi[start]
             for i in range(start, end + 1):
                 share = (cum_mi[i] - cum_mi[start]) / span if span else 1.0
                 cum_s[i] = elapsed + share * step['duration']
             elapsed += step['duration']
-    return RouteOption(coords, cum_mi, cum_s, distance_mi, duration_s)
+    return RouteOption(coords, cum_mi, cum_s, distance_mi, duration_s, highway_mi=highway_mi)
 
 
 def doubled_back_mi(option: RouteOption) -> float:
@@ -132,3 +151,20 @@ def route_options(origin: tuple[float, float], destination: tuple[float, float])
         if option and all(shared_road(option, kept) <= MAX_SHARED_ROAD for kept in options):
             options.append(option)
     return options
+
+
+def _highway_rank(ref: str) -> int:
+    return 0 if ref.startswith('I') else 1 if ref.startswith('US') else 2
+
+
+def distinct_highway(option: RouteOption, others: list[RouteOption], taken: set[str]) -> str | None:
+    """The highway this route drives most beyond what any other route drives of it.
+
+    Interstates beat US routes beat state routes when the margin is equal. None when no
+    highway sets the route apart by MIN_DISTINCT_HIGHWAY_MI.
+    """
+    def margin(ref: str) -> float:
+        return option.highway_mi[ref] - max((o.highway_mi[ref] for o in others), default=0.0)
+
+    candidates = [ref for ref in option.highway_mi if ref not in taken and margin(ref) >= MIN_DISTINCT_HIGHWAY_MI]
+    return max(candidates, key=lambda ref: (margin(ref), -_highway_rank(ref)), default=None)

@@ -8,9 +8,16 @@ export interface Place {
   lon: number
 }
 
+/** A point the user chose from suggestions or on the map, sent instead of free text. */
+export interface PlacePoint {
+  lat: number
+  lon: number
+  name?: string
+}
+
 export interface PlanRequest {
-  origin: string
-  destination: string
+  origin: string | PlacePoint
+  destination: string | PlacePoint
   departure_time: string
   load_weight_lb: number
   sample_interval_mi: 10 | 25 | 50

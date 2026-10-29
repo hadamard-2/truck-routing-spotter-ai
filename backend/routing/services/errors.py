@@ -1,10 +1,11 @@
 class UpstreamError(Exception):
     """A provider we depend on failed or answered with something unusable."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, retry_after_s: int | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.retry_after_s = retry_after_s
 
 
 class NotFound(Exception):

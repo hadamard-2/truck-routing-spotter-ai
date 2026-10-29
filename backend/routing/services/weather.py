@@ -6,6 +6,7 @@ amounts over the preceding hour, so they are already in/hr; rain is `rain` + `sh
 
 import hashlib
 import json
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -22,6 +23,11 @@ TIMEOUT_S = 30
 CACHE_S = 15 * 60
 # Open-Meteo forecasts reach 16 days; stay a day inside that.
 HORIZON = timedelta(days=15)
+# Waits before retrying a rate-limited or failed request. Open-Meteo's limits are per minute,
+# so short waits only ride out brief spikes; past them we tell the caller when to come back.
+RETRY_WAITS_S = (1, 3)
+BUSY_RETRY_AFTER_S = 60
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 Key = tuple[float, float]
 Series = dict[datetime, Weather]
@@ -67,17 +73,40 @@ def _fetch(keys: list[Key], start: datetime, end: datetime) -> list[Series]:
     cache_key = 'om:' + hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()
     body = cache.get(cache_key)
     if body is None:
-        try:
-            response = httpx.get(FORECAST_URL, params=params, timeout=TIMEOUT_S)
-            response.raise_for_status()
-            body = response.json()
-        except (httpx.HTTPError, ValueError) as e:
-            raise UpstreamError('weather_unavailable', f'Weather lookup failed: {e}') from e
+        body = _request(params)
         cache.set(cache_key, body, CACHE_S)
     locations = body if isinstance(body, list) else [body]
     if len(locations) != len(keys):
         raise UpstreamError('weather_unavailable', 'Weather lookup returned the wrong number of locations.')
     return [parse_location(loc) for loc in locations]
+
+
+def _request(params: dict):
+    """GET with retries on rate limits, server errors and timeouts."""
+    for attempt in range(len(RETRY_WAITS_S) + 1):
+        last = attempt == len(RETRY_WAITS_S)
+        try:
+            response = httpx.get(FORECAST_URL, params=params, timeout=TIMEOUT_S)
+        except httpx.TransportError as e:
+            if last:
+                raise UpstreamError('weather_unavailable', f'Weather lookup failed: {e}') from e
+        else:
+            if response.status_code not in RETRYABLE_STATUS:
+                try:
+                    response.raise_for_status()
+                    return response.json()
+                except (httpx.HTTPError, ValueError) as e:
+                    raise UpstreamError('weather_unavailable', f'Weather lookup failed: {e}') from e
+            if last and response.status_code == 429:
+                raise UpstreamError(
+                    'weather_busy',
+                    'The weather service is getting too many requests. Try again in a minute.',
+                    retry_after_s=BUSY_RETRY_AFTER_S,
+                )
+            if last:
+                raise UpstreamError('weather_unavailable', f'Weather lookup failed with HTTP {response.status_code}.')
+        time.sleep(RETRY_WAITS_S[attempt])
+    raise AssertionError('unreachable')
 
 
 def hourly(points: list[tuple[float, float]], start: datetime, end: datetime) -> dict[Key, Series]:

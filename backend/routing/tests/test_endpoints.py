@@ -74,7 +74,7 @@ def test_plan_matches_contract(client, providers):
     assert response.status_code == 200
     plan = response.json()
 
-    assert {r['label'] for r in plan['routes']} == {'Direct', 'Via Lubbock'}
+    assert {r['label'] for r in plan['routes']} == {'Direct', 'Via TX 114'}
     assert plan['recommended_route_id'] == plan['routes'][0]['id']
     assert [r['rank'] for r in plan['routes']] == [1, 2]
     assert [w['code'] for w in plan['warnings']] == ['fewer_routes']
@@ -163,3 +163,45 @@ def test_heatmap_rejects_bad_input(client, providers, params, field):
     response = client.get('/api/heatmap', params)
     assert response.status_code == 400
     assert response.json()['error']['field'] == field
+
+
+def test_busy_weather_is_a_503_with_retry_after(client, providers):
+    def busy(*args):
+        raise UpstreamError('weather_busy', 'Try again in a minute.', retry_after_s=60)
+
+    providers.setattr(weather, 'hourly', busy)
+    response = post(client)
+    assert response.status_code == 503
+    assert response['Retry-After'] == '60'
+    assert response.json()['error']['code'] == 'weather_busy'
+
+
+def test_plan_accepts_picked_points_with_names(client, providers):
+    plan = post(
+        client,
+        origin={'lat': 32.7767, 'lon': -96.797, 'name': 'Picked point, Dallas'},
+        destination={'lat': 39.7392, 'lon': -104.9903},
+    ).json()
+    assert plan['origin']['name'] == 'Picked point, Dallas'
+    assert plan['destination']['name'] == '39.7392, -104.9903'
+
+
+def test_places_suggests_and_ignores_short_text(client, monkeypatch):
+    from routing.services import geocoding
+
+    monkeypatch.setattr(geocoding, 'suggest', lambda text: [Place('Amarillo, TX, USA', 35.2, -101.8)])
+    assert client.get('/api/places', {'text': 'A'}).json() == {'places': []}
+    assert client.get('/api/places', {'text': 'Amar'}).json() == {
+        'places': [{'name': 'Amarillo, TX, USA', 'lat': 35.2, 'lon': -101.8}]
+    }
+
+
+def test_reverse_place(client, monkeypatch):
+    from routing.services import geocoding
+
+    monkeypatch.setattr(geocoding, 'reverse', lambda lat, lon: Place('SE 12th Ave, Amarillo, TX, USA', lat, lon))
+    assert client.get('/api/places/reverse', {'lat': 35.2, 'lon': -101.83}).json() == {
+        'name': 'SE 12th Ave, Amarillo, TX, USA', 'lat': 35.2, 'lon': -101.83,
+    }
+    assert client.get('/api/places/reverse', {'lat': 'x', 'lon': 1}).status_code == 400
+    assert client.get('/api/places/reverse', {'lat': 95, 'lon': 1}).status_code == 400
