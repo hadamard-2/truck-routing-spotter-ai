@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from routing import planner
+from routing import corridor, planner
 from routing.risk import Weather
 from routing.services import weather
 from routing.services.errors import NotFound, UpstreamError
@@ -129,9 +129,14 @@ def test_checkpoints_read_rain_for_the_hour_they_drive_in(client, providers):
     assert first['precip_hour_ending'] == (DEPARTURE + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
+def heatmap_params(client, **overrides):
+    grid = post(client).json()['heatmap_grid']
+    return {**grid, 'start': body()['departure_time'], 'load_weight_lb': 42000, **overrides}
+
+
 def test_heatmap_frames_read_rain_for_the_hour_that_follows(client, providers):
+    params = heatmap_params(client)
     providers.setattr(weather, 'hourly', rain_in_first_hour)
-    params = {'bbox': '-100,35,-99,36', 'start': body()['departure_time'], 'load_weight_lb': 42000}
     frames = client.get('/api/heatmap', params).json()['frames']
     assert set(frames[0]['rain_in_hr']) == {0.6}
     assert set(frames[1]['rain_in_hr']) == {0.0}
@@ -181,26 +186,27 @@ def test_provider_failure_is_a_502(client, providers):
     assert response.json()['error']['code'] == 'routing_unavailable'
 
 
-def test_heatmap_frames_align_with_points(client, providers):
-    params = {'bbox': '-106,32,-96,40', 'start': body()['departure_time'], 'load_weight_lb': 42000}
+def test_heatmap_covers_the_plans_corridor(client, providers):
+    params = heatmap_params(client)
     response = client.get('/api/heatmap', params)
     assert response.status_code == 200
     heat = response.json()
+    assert heat['step_deg'] == params['step_deg']
+    assert heat['points'] == corridor.Grid.from_params(params).points()
     assert [f['hour'] for f in heat['frames']] == list(range(49))
-    assert len(heat['points']) <= 280
     for frame in heat['frames']:
         assert len(frame['score']) == len(heat['points'])
         assert set(frame['score']) <= {0, 4}
 
 
-@pytest.mark.parametrize('params, field', [
-    ({'bbox': '1,2,3', 'start': '2026-10-30T14:00:00Z', 'load_weight_lb': 1}, 'bbox'),
-    ({'bbox': '-140,10,-60,60', 'start': '2026-10-30T14:00:00Z', 'load_weight_lb': 1}, 'bbox'),
-    ({'bbox': '-106,32,-96,40', 'start': 'soon', 'load_weight_lb': 1}, 'start'),
-    ({'bbox': '-106,32,-96,40', 'start': '2026-10-30T14:00:00Z', 'load_weight_lb': 'x'}, 'load_weight_lb'),
+@pytest.mark.parametrize('overrides, field', [
+    ({'cells': 'AAAA'}, 'cells'),
+    ({'step_deg': 'x'}, 'step_deg'),
+    ({'start': 'soon'}, 'start'),
+    ({'load_weight_lb': 'x'}, 'load_weight_lb'),
 ])
-def test_heatmap_rejects_bad_input(client, providers, params, field):
-    response = client.get('/api/heatmap', params)
+def test_heatmap_rejects_bad_input(client, providers, overrides, field):
+    response = client.get('/api/heatmap', heatmap_params(client, **overrides))
     assert response.status_code == 400
     assert response.json()['error']['field'] == field
 

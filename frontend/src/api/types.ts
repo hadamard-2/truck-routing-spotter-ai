@@ -80,8 +80,19 @@ export interface Plan {
   sample_interval_mi: number
   recommended_route_id: string
   corridor_bbox: [number, number, number, number]
+  /** The heatmap's grid, passed back unchanged as the /api/heatmap query. */
+  heatmap_grid: HeatmapGrid
   routes: Route[]
   warnings: Warning[]
+}
+
+export interface HeatmapGrid {
+  min_lon: number
+  min_lat: number
+  step_deg: number
+  cols: number
+  rows: number
+  cells: string
 }
 
 export interface HeatmapFrame {
@@ -95,7 +106,7 @@ export interface HeatmapFrame {
 
 export interface Heatmap {
   start: string
-  bbox: [number, number, number, number]
+  step_deg: number
   points: { lat: number; lon: number }[]
   frames: HeatmapFrame[]
 }

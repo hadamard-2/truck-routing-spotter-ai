@@ -113,9 +113,17 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
         <Field data-invalid={invalid('destination') || undefined}>
           <div className="flex items-center justify-between gap-2">
             <FieldLabel htmlFor="destination">To</FieldLabel>
-            <Button type="button" variant="ghost" size="xs" className="-my-1 text-muted-foreground" onClick={swap}>
-              <ArrowUpDownIcon data-icon="inline-start" />
-              Swap
+            {/* Midway between the From and To inputs, which sits 6px above this row's centre. */}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="-my-2 -translate-y-1.5 rounded-full text-muted-foreground"
+              aria-label="Swap start and end"
+              title="Swap start and end"
+              onClick={swap}
+            >
+              <ArrowUpDownIcon />
             </Button>
           </div>
           <PlaceField

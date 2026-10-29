@@ -46,7 +46,7 @@ export function planTrip(payload: PlanRequest): Promise<Plan> {
 
 export function getHeatmap(plan: Plan): Promise<Heatmap> {
   const params = new URLSearchParams({
-    bbox: plan.corridor_bbox.join(','),
+    ...Object.fromEntries(Object.entries(plan.heatmap_grid).map(([k, v]) => [k, String(v)])),
     start: plan.departure_time,
     load_weight_lb: String(plan.load_weight_lb),
   })

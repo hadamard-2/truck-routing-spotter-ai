@@ -52,7 +52,8 @@ These follow directly from the spec's wording and were settled without needing a
 - Route names: alternatives are named after the numbered highway (interstate, US or state route) they drive most beyond what any other route drives of it, e.g. "Via US 183", needing a margin of at least 20 miles. Without one, the town nearest the route's midpoint is used, then "Alternative n".
 - Weather retries: a rate-limited, failed or timed-out weather request is retried after 1 s and again after 3 s. Open-Meteo's limits are per minute, so if it is still rate-limited the API answers 503 `weather_busy` with `Retry-After: 60` rather than holding the request open for a minute; the web app retries the heatmap once after that wait.
 - Departure window: from 1 hour ago to 14 days ahead, the useful reach of the forecast.
-- Weather lookups are rounded to ~1 km (0.01°), finer than the forecast grid, and the heatmap grid holds at most about 250 points, to stay within Open-Meteo's per-minute request limit (each location counts as a request).
+- Weather lookups are rounded to ~1 km (0.01°), finer than the forecast grid, and the heatmap grid holds at most 250 points, to stay within Open-Meteo's per-minute request limit (each location counts as a request).
+- Heatmap corridor: the heatmap covers grid cells within 25 miles of any route, not the routes' whole bounding box, so the 250 points go where the truck drives. The grid starts at 0.2° and widens in 0.05° steps until the corridor fits; Dallas → Denver lands on 0.3° (about 21 miles), where a box over the same trip needed 0.55°. 25 miles was picked as the widest corridor that still allows 0.3° cells on that trip.
 
 ## Findings
 

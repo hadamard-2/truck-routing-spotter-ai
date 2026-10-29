@@ -44,6 +44,7 @@ Every risk value uses one string enum, with a fixed numeric score used for avera
   "sample_interval_mi": 25,
   "recommended_route_id": "r1",
   "corridor_bbox": [-106.1, 32.2, -95.9, 40.3],
+  "heatmap_grid": { "min_lon": -105.93, "min_lat": 31.97, "step_deg": 0.3, "cols": 35, "rows": 28, "cells": "AAAAHgAA..." },
   "routes": [
     {
       "id": "r1",
@@ -99,9 +100,9 @@ Weather risk over the trip corridor, hour by hour, for the slider.
 
 ### Request
 
-`GET /api/heatmap?bbox=-106.1,32.2,-95.9,40.3&start=2026-10-30T14:00:00Z&load_weight_lb=42000`
+`GET /api/heatmap?min_lon=-105.93&min_lat=31.97&step_deg=0.3&cols=35&rows=28&cells=AAAAHgAA...&start=2026-10-30T14:00:00Z&load_weight_lb=42000`
 
-- `bbox`: `minLon,minLat,maxLon,maxLat`, normally the plan's `corridor_bbox`.
+- `min_lon`, `min_lat`, `step_deg`, `cols`, `rows`, `cells`: the plan's `heatmap_grid`, passed back unchanged. The grid's cell at row `r`, column `c` is centred on `(min_lat + r × step_deg, min_lon + c × step_deg)`; `cells` is a base64url bitmask (no padding) over `rows × cols` cells, row by row, most significant bit first, marking the cells inside the corridor. At most 250 cells may be marked.
 - `start`: hour 0 of the slider.
 - `load_weight_lb`: so cell levels apply the same load rules as checkpoints.
 
@@ -110,7 +111,7 @@ Weather risk over the trip corridor, hour by hour, for the slider.
 ```json
 {
   "start": "2026-10-30T14:00:00Z",
-  "bbox": [-106.1, 32.2, -95.9, 40.3],
+  "step_deg": 0.3,
   "points": [{ "lat": 32.2, "lon": -106.1 }, "..."],
   "frames": [
     {
@@ -127,7 +128,7 @@ Weather risk over the trip corridor, hour by hour, for the slider.
 
 - `frames` has 49 entries, hours 0 to 48. Each frame reads wind at its `time` and rain and snow for the hour that starts at its `time`, the same rule as checkpoints.
 - Every array in a frame is aligned by index with `points`. `score` is the 0–4 risk score; the raw arrays let the UI switch the heatmap to a single condition. Values are `null` where the forecast has no data for that hour.
-- `points` is an even grid over `bbox` of at most about 250 points, so the response stays small and within the weather provider's per-minute limits.
+- `points` are the centres of the marked cells, in row-major order: an even grid of at most 250 points within 25 miles of any route, so the response stays small and within the weather provider's per-minute limits. `step_deg` is the cell size.
 
 ## `GET /api/places`
 

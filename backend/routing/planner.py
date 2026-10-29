@@ -1,11 +1,10 @@
 """Builds the /api/plan and /api/heatmap responses (docs/api-contract.md) from the services."""
 
-import math
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from routing import ranking
+from routing import corridor, ranking
 from routing.risk import SCORE, classify
 from routing.services import weather
 from routing.services.checkpoints import sample
@@ -17,9 +16,6 @@ MAX_DEPARTURE_AHEAD = timedelta(days=14)
 MAX_DEPARTURE_BEHIND = timedelta(hours=1)
 BBOX_PAD_DEG = 0.5
 HEATMAP_HOURS = 48
-HEATMAP_MAX_POINTS = 250
-HEATMAP_MIN_STEP_DEG = 0.25
-HEATMAP_MAX_SPAN_DEG = 30
 
 
 class InvalidInput(Exception):
@@ -197,6 +193,7 @@ def build_plan(data) -> dict:
         'load_weight_lb': load,
         'sample_interval_mi': interval,
         'recommended_route_id': ordered[0]['id'],
+        'heatmap_grid': corridor.build([option.coords for option in options]).params(),
         'corridor_bbox': [
             round(min(lons) - BBOX_PAD_DEG, 2),
             round(min(lats) - BBOX_PAD_DEG, 2),
@@ -208,44 +205,21 @@ def build_plan(data) -> dict:
     }
 
 
-def parse_bbox(value) -> tuple[float, float, float, float]:
-    try:
-        min_lon, min_lat, max_lon, max_lat = (float(v) for v in str(value).split(','))
-    except ValueError:
-        raise InvalidInput('bbox must be "minLon,minLat,maxLon,maxLat".', 'bbox') from None
-    if not (-180 <= min_lon < max_lon <= 180 and -90 <= min_lat < max_lat <= 90):
-        raise InvalidInput('bbox corners are out of order or out of range.', 'bbox')
-    if max_lon - min_lon > HEATMAP_MAX_SPAN_DEG or max_lat - min_lat > HEATMAP_MAX_SPAN_DEG:
-        raise InvalidInput(f'bbox can span at most {HEATMAP_MAX_SPAN_DEG} degrees each way.', 'bbox')
-    return min_lon, min_lat, max_lon, max_lat
-
-
-def grid(bbox: tuple[float, float, float, float]) -> list[dict]:
-    """Evenly spaced points covering the box, at most about HEATMAP_MAX_POINTS of them."""
-    min_lon, min_lat, max_lon, max_lat = bbox
-    area = (max_lon - min_lon) * (max_lat - min_lat)
-    step = max(HEATMAP_MIN_STEP_DEG, math.ceil(math.sqrt(area / HEATMAP_MAX_POINTS) * 20) / 20)
-    cols = int((max_lon - min_lon) // step) + 1
-    rows = int((max_lat - min_lat) // step) + 1
-    return [
-        {'lat': round(min_lat + r * step, 3), 'lon': round(min_lon + c * step, 3)}
-        for r in range(rows)
-        for c in range(cols)
-    ]
-
-
 def build_heatmap(params) -> dict:
-    for field in ('bbox', 'start', 'load_weight_lb'):
+    for field in ('start', 'load_weight_lb'):
         if not params.get(field):
             raise InvalidInput(f'{field} is required.', field)
-    bbox = parse_bbox(params['bbox'])
+    try:
+        grid = corridor.Grid.from_params(params)
+    except corridor.InvalidGrid as e:
+        raise InvalidInput(e.message, e.field) from None
     start = parse_time(params['start'], 'start').replace(minute=0, second=0, microsecond=0)
     try:
         load = parse_load(int(params['load_weight_lb']))
     except ValueError:
         raise InvalidInput('load_weight_lb must be a positive whole number of pounds.', 'load_weight_lb') from None
 
-    points = grid(bbox)
+    points = grid.points()
     forecasts = weather.hourly([(p['lat'], p['lon']) for p in points], start, start + timedelta(hours=HEATMAP_HOURS))
     series = [forecasts[weather.point_key(p['lat'], p['lon'])] for p in points]
 
@@ -261,5 +235,5 @@ def build_heatmap(params) -> dict:
             'rain_in_hr': [w.rain_in_hr if w else None for w in cells],
             'snow_in_hr': [w.snow_in_hr if w else None for w in cells],
         })
-    return {'start': iso(start), 'bbox': list(bbox), 'points': points, 'frames': frames}
+    return {'start': iso(start), 'step_deg': grid.step_deg, 'points': points, 'frames': frames}
 
