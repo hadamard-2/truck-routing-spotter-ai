@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { TimePicker, TimePickerContent, TimePickerPanel, TimePickerTrigger } from '@/components/reui/time-picker'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { formatDate, fromUtcIso, nextHour, toUtcIso } from '@/format'
+import { formatDate, fromWallClockIso, nextHour, toWallClockIso } from '@/format'
 import { fromRequestPlace, toRequestPlace } from '@/lib/place'
 import { MAP_COLORS } from '@/risk'
 import type { PlaceValue } from '@/lib/place'
@@ -55,8 +55,8 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
   const [destination, setDestination] = useState<PlaceValue>(() =>
     fromRequestPlace(initial?.destination ?? 'Denver, CO'),
   )
-  const [date, setDate] = useState(() => (initial ? fromUtcIso(initial.departure_time) : nextHour()).date)
-  const [time, setTime] = useState(() => (initial ? fromUtcIso(initial.departure_time) : nextHour()).time)
+  const [date, setDate] = useState(() => (initial ? fromWallClockIso(initial.departure_time) : nextHour()).date)
+  const [time, setTime] = useState(() => (initial ? fromWallClockIso(initial.departure_time) : nextHour()).time)
   const [dateOpen, setDateOpen] = useState(false)
   const [today] = useState(startOfToday)
   const [weight, setWeight] = useState(String(initial?.load_weight_lb ?? 42000))
@@ -76,7 +76,7 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
     onSubmit({
       origin: toRequestPlace(origin),
       destination: toRequestPlace(destination),
-      departure_time: toUtcIso(date, time),
+      departure_time: toWallClockIso(date, time),
       load_weight_lb: Number.parseInt(weight, 10),
       sample_interval_mi: interval,
     })
@@ -171,6 +171,7 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
               </TimePickerContent>
             </TimePicker>
           </div>
+          <FieldDescription>Local time at the start.</FieldDescription>
           {errorFor('departure_time')}
         </Field>
 

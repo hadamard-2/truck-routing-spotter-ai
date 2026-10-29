@@ -1,6 +1,6 @@
 # API contract
 
-The frontend talks only to these two endpoints. Geocoding, routing and weather providers stay behind them. All times are ISO 8601 in UTC (`2026-10-30T14:00:00Z`); the frontend converts to local time for display. Coordinates in GeoJSON geometry are `[lon, lat]`; everywhere else they are `{ "lat": ..., "lon": ... }`. Distances are miles, durations are seconds.
+The frontend talks only to the endpoints below. Geocoding, routing and weather providers stay behind them. Times in responses are ISO 8601 in UTC (`2026-10-30T14:00:00Z`); the plan carries the origin's time zone so a client can show them in the trip's local time. Coordinates in GeoJSON geometry are `[lon, lat]`; everywhere else they are `{ "lat": ..., "lon": ... }`. Distances are miles, durations are seconds.
 
 ## Risk levels
 
@@ -22,12 +22,13 @@ Every risk value uses one string enum, with a fixed numeric score used for avera
 {
   "origin": "Dallas, TX",
   "destination": "Denver, CO",
-  "departure_time": "2026-10-30T14:00:00Z",
+  "departure_time": "2026-10-30T09:00:00",
   "load_weight_lb": 42000,
   "sample_interval_mi": 25
 }
 ```
 
+- `departure_time`: wall-clock time at the origin when it has no zone (`2026-10-30T09:00:00` is 9 AM in Dallas), or an exact instant when it has one (`2026-10-30T14:00:00Z`). It must be from 1 hour ago to 14 days ahead.
 - `origin`, `destination`: free text, geocoded by the backend, or an exact point `{ "lat": ..., "lon": ..., "name": "..." }` (from a suggestion or a point picked on the map). `name` is optional and is echoed back as the place name; without it the name is the coordinates.
 - `sample_interval_mi`: one of `10`, `25`, `50`.
 - `load_weight_lb`: integer, > 0.
@@ -36,7 +37,7 @@ Every risk value uses one string enum, with a fixed numeric score used for avera
 
 ```json
 {
-  "origin": { "name": "Dallas, Texas, USA", "lat": 32.7767, "lon": -96.797 },
+  "origin": { "name": "Dallas, Texas, USA", "lat": 32.7767, "lon": -96.797, "time_zone": "America/Chicago" },
   "destination": { "name": "Denver, Colorado, USA", "lat": 39.7392, "lon": -104.9903 },
   "departure_time": "2026-10-30T14:00:00Z",
   "load_weight_lb": 42000,
@@ -57,7 +58,7 @@ Every risk value uses one string enum, with a fixed numeric score used for avera
         "miles_by_level": { "low": 610.0, "moderate": 97.4, "high": 50.0, "severe": 25.0, "no_travel": 0.0 },
         "average_risk": 0.38,
         "worst_level": "severe",
-        "rank_reason": "Fewest severe miles (25.0 vs 50.0 and 75.0)"
+        "rank_reason": "Fewer severe miles than Via US 287 (25 vs 50), but 1 h 10 min slower"
       },
       "checkpoints": [
         {
@@ -68,6 +69,7 @@ Every risk value uses one string enum, with a fixed numeric score used for avera
           "lon": -96.797,
           "eta": "2026-10-30T14:00:00Z",
           "forecast_time": "2026-10-30T14:00:00Z",
+          "precip_hour_ending": "2026-10-30T15:00:00Z",
           "weather": { "wind_mph": 12.0, "gust_mph": 21.0, "rain_in_hr": 0.0, "snow_in_hr": 0.0 },
           "levels": { "wind": "low", "rain": "low", "snow": "low" },
           "load_rule": null,
@@ -84,9 +86,10 @@ Field notes:
 
 - `routes` holds up to 3 entries, ordered by `rank` (1 = recommended).
 - `checkpoints[i].segment_mi` is the stretch of road this checkpoint stands for; summing `segment_mi` by `level` gives `miles_by_level`, so the UI never re-derives it.
-- `forecast_time` is the forecast hour actually used for `eta` (the hour nearest the ETA), so the UI can show both.
+- `origin.time_zone` is the origin's IANA time zone.
+- `forecast_time` is the hour wind is read at (the hour nearest `eta`). `precip_hour_ending` is the end of the hour whose rain and snow totals are used: the hour the truck is driving in at `eta`.
 - `levels` is the per-condition classification before load rules; `level` is the final checkpoint level. `load_rule` is `null`, `"wind_45_54_over_30000"` or `"wind_35_44_over_40000"` when a load rule raised the level.
-- `rank_reason` is a one-line, human-readable reason for the route's position.
+- `rank_reason` is a one-line, human-readable reason for the route's position, compared with its neighbour (the recommended route with the runner-up, every other route with the one above it), including the drive-time difference.
 - `average_risk` and `worst_level` cover only checkpoints with a forecast; both are `null` when no checkpoint has one.
 - `warnings` carries non-fatal notes as `{ "code": "...", "message": "..." }`, e.g. `fewer_routes` (fewer than 3 distinct routes found) or `beyond_forecast` (some checkpoints fall past the forecast horizon; their `level` is `null` and their `weather` is `null`).
 
@@ -122,7 +125,7 @@ Weather risk over the trip corridor, hour by hour, for the slider.
 }
 ```
 
-- `frames` has 49 entries, hours 0 to 48.
+- `frames` has 49 entries, hours 0 to 48. Each frame reads wind at its `time` and rain and snow for the hour that starts at its `time`, the same rule as checkpoints.
 - Every array in a frame is aligned by index with `points`. `score` is the 0–4 risk score; the raw arrays let the UI switch the heatmap to a single condition. Values are `null` where the forecast has no data for that hour.
 - `points` is an even grid over `bbox` of at most about 250 points, so the response stays small and within the weather provider's per-minute limits.
 

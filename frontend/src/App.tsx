@@ -31,7 +31,7 @@ function TripSummary({ plan, onEdit }: { plan: Plan; onEdit: () => void }) {
           {placeName(plan.destination.name)}
         </CardTitle>
         <CardDescription className="flex flex-wrap gap-x-3 tabular-nums">
-          <span>Leaves {formatTime(plan.departure_time)}</span>
+          <span>Leaves {formatTime(plan.departure_time, plan.origin.time_zone)}</span>
           <span>{formatWeight(plan.load_weight_lb)}</span>
           <span>Every {plan.sample_interval_mi} mi</span>
         </CardDescription>
@@ -59,6 +59,8 @@ export default function App() {
   const [formKey, setFormKey] = useState(0)
   const [error, setError] = useState<ApiError | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
+  // The plan whose heatmap is wanted; a heatmap or retry for an older plan is dropped.
+  const heatmapFor = useRef<Plan | null>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const [picked, setPicked] = useState<PickedPlace>()
   // The field the map is waiting to set; map clicks only pick while this is set.
@@ -105,14 +107,18 @@ export default function App() {
   }
 
   function loadHeatmap(next: Plan, retried = false) {
+    heatmapFor.current = next
     getHeatmap(next)
-      .then(setHeatmap)
+      .then((heat) => {
+        if (heatmapFor.current === next) setHeatmap(heat)
+      })
       .catch((e: ApiError) => {
+        if (heatmapFor.current !== next) return
         if (e.code === 'weather_busy' && e.retryAfterS && !retried) {
           toast('Weather layer is waiting on the weather service', {
             description: `Trying again in ${e.retryAfterS} seconds.`,
           })
-          setTimeout(() => loadHeatmap(next, true), e.retryAfterS * 1000)
+          setTimeout(() => heatmapFor.current === next && loadHeatmap(next, true), e.retryAfterS * 1000)
           return
         }
         toast.error('Weather layer unavailable', { description: e.message })
@@ -210,6 +216,7 @@ export default function App() {
         {heatmap ? (
           <TimeSlider
             heatmap={heatmap}
+            timeZone={plan?.origin.time_zone}
             hour={hour}
             onHourChange={setHour}
             showHeatmap={showHeatmap}
@@ -268,7 +275,12 @@ export default function App() {
               </p>
             </div>
             <div className={cn('transition-opacity', editing && 'opacity-60')}>
-              <RouteList routes={plan.routes} selectedId={selectedId} onSelect={setSelectedId} />
+              <RouteList
+                routes={plan.routes}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                timeZone={plan.origin.time_zone}
+              />
             </div>
           </div>
         ) : (

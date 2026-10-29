@@ -18,6 +18,7 @@ export interface PlacePoint {
 export interface PlanRequest {
   origin: string | PlacePoint
   destination: string | PlacePoint
+  /** Wall-clock time at the origin ("2026-10-30T09:00:00"), or a time with its zone ("...Z"). */
   departure_time: string
   load_weight_lb: number
   sample_interval_mi: 10 | 25 | 50
@@ -38,6 +39,7 @@ export interface Checkpoint {
   lon: number
   eta: string
   forecast_time: string
+  precip_hour_ending: string
   weather: Weather | null
   levels: Record<'wind' | 'rain' | 'snow', RiskLevel> | null
   load_rule: string | null
@@ -70,7 +72,8 @@ export interface Warning {
 }
 
 export interface Plan {
-  origin: Place
+  /** `time_zone` is the origin's IANA zone; the app shows every trip time in it. */
+  origin: Place & { time_zone: string }
   destination: Place
   departure_time: string
   load_weight_lb: number

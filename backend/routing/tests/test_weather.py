@@ -37,6 +37,28 @@ def test_nearest_hour(minute, hour):
     assert weather.nearest_hour(datetime(2026, 10, 30, 14, minute, tzinfo=UTC)).hour == hour
 
 
+def hour_series(**rain_by_hour):
+    """Each hour's wind equals the hour, so the hour wind was read from shows in the result."""
+    return {
+        datetime(2026, 10, 30, h, tzinfo=UTC): Weather(wind_mph=h, gust_mph=h, rain_in_hr=rain_by_hour.get(f'h{h}', 0.0), snow_in_hr=0.0)
+        for h in range(13, 17)
+    }
+
+
+@pytest.mark.parametrize('minute, wind_hour', [(0, 14), (20, 14), (40, 15)])
+def test_at_reads_wind_at_the_nearest_hour_and_rain_for_the_hour_the_truck_is_in(minute, wind_hour):
+    series = hour_series(h14=0.2, h15=0.6)
+    w = weather.at(series, datetime(2026, 10, 30, 14, minute, tzinfo=UTC))
+    assert w.wind_mph == wind_hour
+    # Open-Meteo stamps rain with the end of the hour it fell in; 14:00–15:00 is stamped 15:00.
+    assert w.rain_in_hr == 0.6
+
+
+def test_at_is_none_when_the_hour_the_truck_is_in_has_no_forecast():
+    series = hour_series()
+    assert weather.at(series, datetime(2026, 10, 30, 16, 10, tzinfo=UTC)) is None
+
+
 def test_hourly_batches_points_and_rounds_keys(monkeypatch):
     calls = []
 
@@ -109,3 +131,8 @@ def test_request_does_not_retry_client_errors(monkeypatch, no_sleep):
     with pytest.raises(UpstreamError) as e:
         weather._request({})
     assert e.value.code == 'weather_unavailable' and no_sleep == []
+
+
+def test_time_zone_reads_the_zone_open_meteo_resolves_for_the_point(monkeypatch, no_sleep):
+    replay(monkeypatch, FakeResponse(200, {'timezone': 'America/Chicago', 'utc_offset_seconds': -18000}))
+    assert weather.time_zone(32.7767, -96.797) == 'America/Chicago'

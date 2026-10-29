@@ -8,6 +8,8 @@ import { LEVEL_BG, LEVEL_LABEL, LEVELS } from '@/risk'
 
 interface Props {
   heatmap: Heatmap
+  /** IANA zone the frame's time is shown in. */
+  timeZone?: string
   hour: number
   onHourChange: (hour: number) => void
   showHeatmap: boolean
@@ -17,6 +19,7 @@ interface Props {
 
 export function TimeSlider({
   heatmap,
+  timeZone,
   hour,
   onHourChange,
   showHeatmap,
@@ -33,7 +36,7 @@ export function TimeSlider({
           <span className="text-sm font-medium tabular-nums">
             {hour === 0 ? 'At departure' : `${hour} h after departure`}
           </span>
-          <span className="truncate text-xs text-muted-foreground">{frame && formatTime(frame.time)}</span>
+          <span className="truncate text-xs text-muted-foreground">{frame && formatTime(frame.time, timeZone)}</span>
         </div>
         <div className="flex items-center gap-2">
           <Switch id="weather-layer" checked={showHeatmap} onCheckedChange={onShowHeatmapChange} />

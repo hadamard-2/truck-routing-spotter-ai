@@ -35,36 +35,56 @@ def _sort_key(route: dict) -> tuple:
     return (m['no_travel'], m['severe'], m['high'], average, route['duration_s'])
 
 
-def _fmt(miles: float) -> str:
-    return f'{miles:g}'
+def _fmt(value: float) -> str:
+    return f'{value:g}'
 
 
-def _reason(route: dict, others: list[dict], first: bool) -> str:
-    """The first criterion on which this route differs from the routes it is compared with."""
-    mine = route['summary']
+def _duration(seconds: float) -> str:
+    """'2 h 40 min', '1 h', '40 min'."""
+    h, m = divmod(round(abs(seconds) / 60), 60)
+    if not h:
+        return f'{m} min'
+    return f'{h} h {m} min' if m else f'{h} h'
+
+
+def _risk_difference(route: dict, other: dict) -> tuple[str, bool] | None:
+    """('Fewer severe miles than Direct (0 vs 25)', True) for the first risk criterion that differs; True if `route` is safer."""
+    mine, theirs = route['summary'], other['summary']
     for level, name in MILE_CRITERIA:
-        values = [o['summary']['miles_by_level'][level] for o in others]
-        own = mine['miles_by_level'][level]
-        if any(v != own for v in values):
-            if first:
-                return f"Fewest {name} ({_fmt(own)} vs {' and '.join(_fmt(v) for v in values)})"
-            return f"More {name} than {others[0]['label']} ({_fmt(own)} vs {_fmt(values[0])})"
-    if any(o['summary']['average_risk'] != mine['average_risk'] for o in others):
-        return 'Lowest average risk' if first else f"Higher average risk than {others[0]['label']}"
-    if any(o['duration_s'] != route['duration_s'] for o in others):
-        return 'Shortest travel time' if first else f"Longer travel time than {others[0]['label']}"
-    return 'Same risk and travel time'
+        own, their = mine['miles_by_level'][level], theirs['miles_by_level'][level]
+        if own != their:
+            return f"{'Fewer' if own < their else 'More'} {name} than {other['label']} ({_fmt(own)} vs {_fmt(their)})", own < their
+    own, their = mine['average_risk'], theirs['average_risk']
+    if own != their:
+        safer = their is None or (own is not None and own < their)
+        values = f' ({_fmt(own)} vs {_fmt(their)})' if own is not None and their is not None else ''
+        return f"{'Lower' if safer else 'Higher'} average risk than {other['label']}{values}", safer
+    return None
+
+
+def _reason(route: dict, other: dict) -> str:
+    """Why `route` sits where it does next to `other`, and what that costs or saves in drive time."""
+    delta = route['duration_s'] - other['duration_s']
+    pace = f"{_duration(delta)} {'slower' if delta > 0 else 'faster'}" if round(abs(delta) / 60) else ''
+    risk = _risk_difference(route, other)
+    if risk is None:
+        return f"Same risk as {other['label']}, {pace}" if pace else f"Same risk and travel time as {other['label']}"
+    text, safer = risk
+    if not pace:
+        return text
+    return f"{text}, {'but' if safer == (delta > 0) else 'and'} {pace}"
 
 
 def rank(routes: list[dict]) -> list[dict]:
     """Sort best first and set `rank`, `recommended` and `summary.rank_reason` on each route.
 
-    The winner is explained against every other route; each later route against the one just above it.
+    Each route is explained against its neighbour: the winner against the runner-up, every
+    later route against the one just above it.
     """
     ordered = sorted(routes, key=_sort_key)
     for pos, route in enumerate(ordered, start=1):
-        others = ordered[1:] if pos == 1 else [ordered[pos - 2]]
+        neighbour = ordered[pos - 2] if pos > 1 else ordered[1] if len(ordered) > 1 else None
         route['rank'] = pos
         route['recommended'] = pos == 1
-        route['summary']['rank_reason'] = _reason(route, others, first=pos == 1) if others else 'Only route found'
+        route['summary']['rank_reason'] = _reason(route, neighbour) if neighbour else 'Only route found'
     return ordered

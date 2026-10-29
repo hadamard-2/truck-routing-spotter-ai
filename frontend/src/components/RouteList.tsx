@@ -10,9 +10,11 @@ interface Props {
   routes: Route[]
   selectedId: string | null
   onSelect: (id: string) => void
+  /** IANA zone the times are shown in. */
+  timeZone: string
 }
 
-export function RouteList({ routes, selectedId, onSelect }: Props) {
+export function RouteList({ routes, selectedId, onSelect, timeZone }: Props) {
   return (
     <ItemGroup className="gap-2">
       {routes.map((route) => {
@@ -42,7 +44,7 @@ export function RouteList({ routes, selectedId, onSelect }: Props) {
               <ItemDescription className="flex flex-wrap gap-x-3 tabular-nums">
                 <span>{formatMiles(route.distance_mi)}</span>
                 <span>{formatDuration(route.duration_s)}</span>
-                <span>Arrives {formatTime(route.arrival_time)}</span>
+                <span>Arrives {formatTime(route.arrival_time, timeZone)}</span>
               </ItemDescription>
               <RiskStrip checkpoints={route.checkpoints} distance={route.distance_mi} />
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums">

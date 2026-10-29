@@ -30,6 +30,12 @@ The 0–48 hour slider runs from departure to 48 hours after departure.
 
 Why: it lines up the heatmap with checkpoint ETAs and the truck's position on the map, so moving the slider shows the weather the truck will actually meet. A departure several days out uses forecasts further ahead, which are less accurate; Open-Meteo forecasts reach about 16 days.
 
+### Times are local to the origin
+
+The departure is entered as wall-clock time at the origin, and every time the app shows (departure, checkpoint ETAs, arrival, heatmap hours) is in the origin's time zone, labelled with its abbreviation.
+
+Why: a driver leaving Dallas at 9 AM means 9 AM in Dallas, wherever the person planning the trip is sitting. One zone for the whole trip keeps times easy to compare along the route, and matches how US drivers keep their logs (in their home terminal's time). The origin's zone comes from Open-Meteo's `timezone=auto` lookup. The API still accepts an exact instant with a zone (`...Z`).
+
 ### Builder's calls
 
 These follow directly from the spec's wording and were settled without needing a product decision:
@@ -39,7 +45,8 @@ These follow directly from the spec's wording and were settled without needing a
 - Load rules: strictly "over" the stated weight, so exactly 40,000 lb in 35–44 mph wind stays High.
 - Miles per level: each checkpoint stands for the stretch of road from it to the next checkpoint, so a route's miles at each level sum to its length.
 - Average risk: levels are scored Low 0, Moderate 1, High 2, Severe 3, No Travel 4, and averaged weighted by miles.
-- Forecast hour: a checkpoint uses the forecast hour nearest its ETA (an ETA of 14:40 reads the 15:00 forecast), so the weather is never more than 30 minutes from the truck's arrival.
+- Forecast hour: wind is a reading at the top of each hour, so a checkpoint reads wind at the hour nearest its ETA (14:40 reads 15:00). Rain and snow are totals over the hour before each stamp, so a checkpoint reads the hour it is driving in (14:20 and 14:40 both read the 14:00–15:00 total, stamped 15:00). Heatmap frames use the same rule.
+- Rank reasons: each route is explained against its neighbour (the recommended route against the runner-up, every other route against the one above it) by the first criterion that separates them, plus the drive-time difference, so the time a safer route costs is visible.
 - Beyond the forecast: checkpoints past the forecast horizon get no level and the response carries a `beyond_forecast` warning instead of failing.
 - Three routes: the direct route plus two forced through via points (see Findings), because the routing API's own alternatives stop at 100 km. A via route that drives more than 5 miles of road out and back (it snapped to a dead end) is retried with the via point at another distance, and a via route sharing over 85% of its road with a route already kept is dropped; the response then warns `fewer_routes`.
 - Route names: alternatives are named after the numbered highway (interstate, US or state route) they drive most beyond what any other route drives of it, e.g. "Via US 183", needing a margin of at least 20 miles. Without one, the town nearest the route's midpoint is used, then "Alternative n".

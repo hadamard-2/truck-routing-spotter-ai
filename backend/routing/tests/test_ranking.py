@@ -60,19 +60,47 @@ def test_severe_then_high_then_average_then_time():
 
 def test_rank_sets_position_recommendation_and_reasons():
     ranked = rank([
-        route('b', 'Direct', 100, low=50, no_travel=50),
-        route('a', 'Via North', 200, low=100),
-        route('c', 'Via South', 150, low=50, no_travel=50, high=10),
+        route('b', 'Direct', 36_000, low=50, no_travel=50),
+        route('a', 'Via North', 45_600, low=100),
+        route('c', 'Via South', 39_600, low=50, no_travel=50, high=10),
     ])
     assert ids(ranked) == ['a', 'b', 'c']
     assert [r['rank'] for r in ranked] == [1, 2, 3]
     assert [r['recommended'] for r in ranked] == [True, False, False]
-    assert ranked[0]['summary']['rank_reason'] == 'Fewest no-travel miles (0 vs 50 and 50)'
-    assert ranked[1]['summary']['rank_reason'] == 'More no-travel miles than Via North (50 vs 0)'
-    assert ranked[2]['summary']['rank_reason'] == 'More high miles than Direct (10 vs 0)'
 
 
-@pytest.mark.parametrize('durations, reason', [((100, 200), 'Shortest travel time'), ((100, 100), 'Same risk and travel time')])
+def reasons(*routes):
+    return [r['summary']['rank_reason'] for r in rank(list(routes))]
+
+
+def test_each_reason_names_the_neighbour_and_what_the_choice_costs_in_time():
+    assert reasons(
+        route('b', 'Direct', 36_000, low=50, no_travel=50),
+        route('a', 'Via North', 45_600, low=100),
+        route('c', 'Via South', 39_600, low=50, no_travel=50, high=10),
+    ) == [
+        'Fewer no-travel miles than Direct (0 vs 50), but 2 h 40 min slower',
+        'More no-travel miles than Via North (50 vs 0), but 2 h 40 min faster',
+        'More high miles than Direct (10 vs 0), and 1 h slower',
+    ]
+
+
+def test_winner_is_explained_by_what_separates_it_from_the_runner_up():
+    # Tied with B on severe miles, so "fewest severe miles" would not be why A wins.
+    assert reasons(
+        route('a', 'A', 3600, low=100),
+        route('b', 'B', 3600, low=80, moderate=20),
+        route('c', 'C', 3600, low=80, severe=20),
+    )[0] == 'Lower average risk than B (0 vs 0.2)'
+
+
+@pytest.mark.parametrize('durations, reason', [
+    ((3600, 7200), 'Same risk as B, 1 h faster'),
+    ((3600, 3600), 'Same risk and travel time as B'),
+])
 def test_reason_falls_back_to_time(durations, reason):
-    ranked = rank([route('a', 'A', durations[0], low=10), route('b', 'B', durations[1], low=10)])
-    assert ranked[0]['summary']['rank_reason'] == reason
+    assert reasons(route('a', 'A', durations[0], low=10), route('b', 'B', durations[1], low=10))[0] == reason
+
+
+def test_a_single_route_has_nothing_to_compare_with():
+    assert reasons(route('a', 'A', 3600, low=10)) == ['Only route found']

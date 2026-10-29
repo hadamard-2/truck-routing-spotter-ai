@@ -148,10 +148,12 @@ function Endpoint({
   stroke,
   fill,
   interactive,
+  timeZone,
 }: {
   place: Place
   checkpoint?: Checkpoint
   title: string
+  timeZone: string
   stroke: string
   fill: string
   interactive: boolean
@@ -181,7 +183,7 @@ function Endpoint({
         <Tooltip pane="tooltipPane">{place.name}</Tooltip>
         {checkpoint && (
           <Popup pane="popupPane">
-            <CheckpointPopup checkpoint={checkpoint} title={`${title}: ${place.name.split(',')[0]}`} />
+            <CheckpointPopup checkpoint={checkpoint} title={`${title}: ${place.name.split(',')[0]}`} timeZone={timeZone} />
           </Popup>
         )}
       </CircleMarker>
@@ -189,7 +191,7 @@ function Endpoint({
   )
 }
 
-function CheckpointPopup({ checkpoint, title }: { checkpoint: Checkpoint; title?: string }) {
+function CheckpointPopup({ checkpoint, title, timeZone }: { checkpoint: Checkpoint; title?: string; timeZone?: string }) {
   const { weather, levels, level, load_rule } = checkpoint
   const rows = weather && levels
     ? [
@@ -207,7 +209,7 @@ function CheckpointPopup({ checkpoint, title }: { checkpoint: Checkpoint; title?
           {level ? LEVEL_LABEL[level] : 'No forecast'}
         </Badge>
       </div>
-      <span className="text-muted-foreground">Arrive {formatTime(checkpoint.eta)}</span>
+      <span className="text-muted-foreground">Arrive {formatTime(checkpoint.eta, timeZone)}</span>
       <Separator />
       {rows.length > 0 ? (
         <dl className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1">
@@ -248,6 +250,7 @@ export function MapView({
   const interactive = picking === null
   const layerKey = interactive ? 'view' : 'pick'
   const routes = plan?.routes ?? []
+  const timeZone = plan?.origin.time_zone
   const selected = routes.find((r) => r.id === selectedId) ?? null
   const others = routes.filter((r) => r.id !== selectedId)
 
@@ -331,7 +334,7 @@ export function MapView({
               }}
             >
               <Popup>
-                <CheckpointPopup checkpoint={c} />
+                <CheckpointPopup checkpoint={c} timeZone={timeZone} />
               </Popup>
             </CircleMarker>
           ))}
@@ -348,6 +351,7 @@ export function MapView({
               place={plan.origin}
               checkpoint={selected?.checkpoints[0]}
               title="Start"
+              timeZone={plan.origin.time_zone}
               stroke={MAP_COLORS.route}
               fill="#fff"
             />
@@ -357,6 +361,7 @@ export function MapView({
               place={plan.destination}
               checkpoint={selected?.checkpoints.at(-1)}
               title="Arrival"
+              timeZone={plan.origin.time_zone}
               stroke="#fff"
               fill={MAP_COLORS.brand}
             />

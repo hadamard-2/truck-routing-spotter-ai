@@ -3,6 +3,7 @@
 import math
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from routing import ranking
 from routing.risk import SCORE, classify
@@ -32,11 +33,15 @@ def iso(dt: datetime) -> str:
     return dt.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def parse_time(value, field: str) -> datetime:
+def _parse_iso(value, field: str) -> datetime:
     try:
-        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
     except ValueError:
         raise InvalidInput(f'{field} must be an ISO 8601 date and time.', field) from None
+
+
+def parse_time(value, field: str) -> datetime:
+    dt = _parse_iso(value, field)
     if dt.tzinfo is None:
         raise InvalidInput(f'{field} must include a time zone, e.g. "2026-10-30T14:00:00Z".', field)
     return dt.astimezone(UTC)
@@ -64,20 +69,26 @@ def _place(value, field: str) -> Place:
 
 
 def _validate_plan(data) -> tuple[datetime, int, int]:
+    """Departure comes back as given: with its zone, or as a wall-clock time still to be placed at the origin."""
     for field in ('origin', 'destination', 'departure_time'):
         if not data.get(field):
             raise InvalidInput(f'{field} is required.', field)
-    departure = parse_time(data['departure_time'], 'departure_time')
-    now = datetime.now(UTC)
-    if departure < now - MAX_DEPARTURE_BEHIND:
-        raise InvalidInput('Departure is in the past. Pick a time from now on.', 'departure_time')
-    if departure > now + MAX_DEPARTURE_AHEAD:
-        raise InvalidInput('Departure must be within the next 14 days, the reach of the weather forecast.', 'departure_time')
+    departure = _parse_iso(data['departure_time'], 'departure_time')
     load = parse_load(data.get('load_weight_lb'))
     interval = data.get('sample_interval_mi')
     if interval not in SAMPLE_INTERVALS:
         raise InvalidInput('sample_interval_mi must be 10, 25 or 50.', 'sample_interval_mi')
     return departure, load, interval
+
+
+def _check_departure(departure: datetime, zone: ZoneInfo) -> None:
+    now = datetime.now(UTC)
+    if departure < now - MAX_DEPARTURE_BEHIND:
+        local = now.astimezone(zone)
+        clock = f'{local.hour % 12 or 12}:{local:%M %p}'
+        raise InvalidInput(f'Departure is in the past: it is now {clock} at the start.', 'departure_time')
+    if departure > now + MAX_DEPARTURE_AHEAD:
+        raise InvalidInput('Departure must be within the next 14 days, the reach of the weather forecast.', 'departure_time')
 
 
 def _labels(options: list[RouteOption]) -> list[str]:
@@ -112,6 +123,12 @@ def build_plan(data) -> dict:
     if (round(origin.lat, 3), round(origin.lon, 3)) == (round(destination.lat, 3), round(destination.lon, 3)):
         raise InvalidInput('Origin and destination are the same place.', 'destination')
 
+    zone = weather.time_zone(origin.lat, origin.lon)
+    if departure.tzinfo is None:
+        departure = departure.replace(tzinfo=ZoneInfo(zone))
+    departure = departure.astimezone(UTC)
+    _check_departure(departure, ZoneInfo(zone))
+
     options = route_options((origin.lon, origin.lat), (destination.lon, destination.lat))
     labels = _labels(options)
     sampled = [sample(option, interval, departure) for option in options]
@@ -125,8 +142,7 @@ def build_plan(data) -> dict:
     for i, (option, checkpoints) in enumerate(zip(options, sampled), start=1):
         out = []
         for c in checkpoints:
-            hour = weather.nearest_hour(c.eta)
-            w = forecasts[weather.point_key(c.lat, c.lon)].get(hour)
+            w = weather.at(forecasts[weather.point_key(c.lat, c.lon)], c.eta)
             result = classify(w, load) if w else None
             beyond_forecast |= w is None
             out.append({
@@ -136,7 +152,8 @@ def build_plan(data) -> dict:
                 'lat': round(c.lat, 5),
                 'lon': round(c.lon, 5),
                 'eta': iso(c.eta),
-                'forecast_time': iso(hour),
+                'forecast_time': iso(weather.nearest_hour(c.eta)),
+                'precip_hour_ending': iso(weather.precip_hour(c.eta)),
                 'weather': w and {
                     'wind_mph': w.wind_mph,
                     'gust_mph': w.gust_mph,
@@ -174,7 +191,7 @@ def build_plan(data) -> dict:
     lons = [x for option in options for x, _ in option.coords]
     lats = [y for option in options for _, y in option.coords]
     return {
-        'origin': {'name': origin.name, 'lat': origin.lat, 'lon': origin.lon},
+        'origin': {'name': origin.name, 'lat': origin.lat, 'lon': origin.lon, 'time_zone': zone},
         'destination': {'name': destination.name, 'lat': destination.lat, 'lon': destination.lon},
         'departure_time': iso(departure),
         'load_weight_lb': load,
@@ -235,7 +252,7 @@ def build_heatmap(params) -> dict:
     frames = []
     for hour in range(HEATMAP_HOURS + 1):
         when = start + timedelta(hours=hour)
-        cells = [s.get(when) for s in series]
+        cells = [weather.at(s, when) for s in series]
         frames.append({
             'hour': hour,
             'time': iso(when),

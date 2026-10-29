@@ -1,8 +1,10 @@
 """Endpoint tests with the providers stubbed: captured ORS routes and synthetic weather."""
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -51,6 +53,7 @@ def providers(monkeypatch):
     monkeypatch.setattr(planner, 'route_options', lambda o, d: options)
     monkeypatch.setattr(planner, 'town_near', lambda lat, lon: 'Lubbock')
     monkeypatch.setattr(weather, 'hourly', fake_hourly)
+    monkeypatch.setattr(weather, 'time_zone', lambda lat, lon: 'America/Chicago')
     return monkeypatch
 
 
@@ -86,6 +89,18 @@ def test_plan_matches_contract(client, providers):
         assert route['checkpoints'][0]['eta'] == body()['departure_time']
 
 
+def test_departure_without_a_zone_is_local_time_at_the_origin(client, providers):
+    local = DEPARTURE.astimezone(ZoneInfo('America/Chicago')).strftime('%Y-%m-%dT%H:%M:%S')
+    plan = post(client, departure_time=local).json()
+    assert plan['departure_time'] == body()['departure_time']
+    assert plan['origin']['time_zone'] == 'America/Chicago'
+
+
+def test_past_departure_says_what_time_it_is_at_the_origin(client, providers):
+    message = post(client, departure_time='2020-01-01T00:00:00').json()['error']['message']
+    assert re.fullmatch(r'Departure is in the past: it is now \d{1,2}:\d{2} [AP]M at the start\.', message)
+
+
 def test_heavy_load_in_45_mph_wind_is_no_travel(client, providers):
     plan = post(client).json()
     stormy = [c for r in plan['routes'] for c in r['checkpoints'] if c['weather']['wind_mph'] == 48]
@@ -95,6 +110,31 @@ def test_heavy_load_in_45_mph_wind_is_no_travel(client, providers):
     light = post(client, load_weight_lb=20000).json()
     stormy = [c for r in light['routes'] for c in r['checkpoints'] if c['weather']['wind_mph'] == 48]
     assert all(c['level'] == 'severe' and c['load_rule'] is None for c in stormy)
+
+
+def rain_in_first_hour(points, start, end):
+    """Heavy rain stamped one hour after `start` (it fell during the first hour), dry otherwise."""
+    rainy = Weather(wind_mph=10, gust_mph=15, rain_in_hr=0.6, snow_in_hr=0.0)
+    series = fake_hourly(points, start, end)
+    for s in series.values():
+        s[start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)] = rainy
+    return series
+
+
+def test_checkpoints_read_rain_for_the_hour_they_drive_in(client, providers):
+    providers.setattr(weather, 'hourly', rain_in_first_hour)
+    first = post(client).json()['routes'][0]['checkpoints'][0]
+    assert first['weather']['rain_in_hr'] == 0.6 and first['level'] == 'severe'
+    assert first['forecast_time'] == body()['departure_time']
+    assert first['precip_hour_ending'] == (DEPARTURE + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def test_heatmap_frames_read_rain_for_the_hour_that_follows(client, providers):
+    providers.setattr(weather, 'hourly', rain_in_first_hour)
+    params = {'bbox': '-100,35,-99,36', 'start': body()['departure_time'], 'load_weight_lb': 42000}
+    frames = client.get('/api/heatmap', params).json()['frames']
+    assert set(frames[0]['rain_in_hr']) == {0.6}
+    assert set(frames[1]['rain_in_hr']) == {0.0}
 
 
 def test_checkpoints_past_the_forecast_have_no_level(client, providers):
@@ -111,7 +151,7 @@ def test_checkpoints_past_the_forecast_have_no_level(client, providers):
     ('load_weight_lb', '42000'),
     ('sample_interval_mi', 30),
     ('departure_time', 'tomorrow'),
-    ('departure_time', '2026-10-30T14:00:00'),
+    ('departure_time', '2020-01-01T00:00:00'),
     ('departure_time', '2020-01-01T00:00:00Z'),
 ])
 def test_plan_rejects_bad_input(client, providers, field, value):

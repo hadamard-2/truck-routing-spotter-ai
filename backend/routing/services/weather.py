@@ -21,6 +21,8 @@ HOURLY = 'wind_speed_10m,wind_gusts_10m,rain,showers,snowfall'
 POINTS_PER_REQUEST = 100
 TIMEOUT_S = 30
 CACHE_S = 15 * 60
+# A point's time zone does not change between requests.
+TIME_ZONE_CACHE_S = 24 * 60 * 60
 # Open-Meteo forecasts reach 16 days; stay a day inside that.
 HORIZON = timedelta(days=15)
 # Waits before retrying a rate-limited or failed request. Open-Meteo's limits are per minute,
@@ -44,6 +46,19 @@ def _hour(dt: datetime) -> datetime:
 
 def nearest_hour(dt: datetime) -> datetime:
     return _hour(dt + timedelta(minutes=30))
+
+
+def precip_hour(dt: datetime) -> datetime:
+    """The stamp of the hourly total covering `dt`: Open-Meteo stamps each total with the end of its hour."""
+    return _hour(dt) + timedelta(hours=1)
+
+
+def at(series: Series, when: datetime) -> Weather | None:
+    """Weather the truck meets at `when`: wind at the nearest hour, rain and snow for the hour it is driving in."""
+    wind, precip = series.get(nearest_hour(when)), series.get(precip_hour(when))
+    if wind is None or precip is None:
+        return None
+    return Weather(wind_mph=wind.wind_mph, gust_mph=wind.gust_mph, rain_in_hr=precip.rain_in_hr, snow_in_hr=precip.snow_in_hr)
 
 
 def parse_location(location: dict) -> Series:
@@ -107,6 +122,20 @@ def _request(params: dict):
                 raise UpstreamError('weather_unavailable', f'Weather lookup failed with HTTP {response.status_code}.')
         time.sleep(RETRY_WAITS_S[attempt])
     raise AssertionError('unreachable')
+
+
+def time_zone(lat: float, lon: float) -> str:
+    """The IANA time zone at a point, e.g. 'America/Chicago', as Open-Meteo resolves it."""
+    lat, lon = point_key(lat, lon)
+    cache_key = f'om:tz:{lat},{lon}'
+    zone = cache.get(cache_key)
+    if zone is None:
+        body = _request({'latitude': lat, 'longitude': lon, 'timezone': 'auto', 'forecast_days': 1})
+        zone = body.get('timezone') if isinstance(body, dict) else None
+        if not zone:
+            raise UpstreamError('weather_unavailable', 'Time zone lookup returned no zone.')
+        cache.set(cache_key, zone, TIME_ZONE_CACHE_S)
+    return zone
 
 
 def hourly(points: list[tuple[float, float]], start: datetime, end: datetime) -> dict[Key, Series]:
