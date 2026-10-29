@@ -15,12 +15,14 @@ import {
 } from 'react-leaflet'
 
 import { reversePlace } from '@/api/client'
-import type { Checkpoint, Heatmap, Place, Plan } from '@/api/types'
+import type { Checkpoint, Heatmap, Place, Plan, Route } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Separator } from '@/components/ui/separator'
-import { formatTime } from '@/format'
+import { formatDuration, formatTime } from '@/format'
+import type { Playhead } from '@/lib/playhead'
+import { usePlayhead } from '@/lib/playhead'
 import { cn } from '@/lib/utils'
 import { LEVEL_BG, LEVEL_COLOR, LEVEL_LABEL, LOAD_RULE_TEXT, MAP_COLORS, UNKNOWN_COLOR, positionAt } from '@/risk'
 import { HeatGrid } from './HeatGrid'
@@ -32,7 +34,7 @@ interface Props {
   onSelect: (id: string) => void
   heatmap: Heatmap | null
   showHeatmap: boolean
-  hour: number
+  playhead: Playhead
   isExpanded: boolean
   onToggleExpanded: () => void
   /** The field the next map click should set; null means clicks don't pick anything. */
@@ -191,6 +193,20 @@ function Endpoint({
   )
 }
 
+/** The truck on the selected route at the slider's time; only it re-renders as the slider moves. */
+function Truck({ route, departure, playhead }: { route: Route; departure: string; playhead: Playhead }) {
+  const hour = usePlayhead(playhead)
+  const position = positionAt(route.checkpoints, Date.parse(departure) + hour * 3_600_000)
+  if (!position) return null
+  return (
+    <Marker position={position} icon={truckIcon} keyboard={false}>
+      <Tooltip direction="top" offset={[0, -10]}>
+        Truck {hour === 0 ? 'at departure' : `${formatDuration(hour * 3600)} after departure`}
+      </Tooltip>
+    </Marker>
+  )
+}
+
 function CheckpointPopup({ checkpoint, title, timeZone }: { checkpoint: Checkpoint; title?: string; timeZone?: string }) {
   const { weather, levels, level, load_rule } = checkpoint
   const rows = weather && levels
@@ -238,7 +254,7 @@ export function MapView({
   onSelect,
   heatmap,
   showHeatmap,
-  hour,
+  playhead,
   isExpanded,
   onToggleExpanded,
   picking,
@@ -262,11 +278,6 @@ export function MapView({
     [plan],
   )
 
-  const truck = useMemo(() => {
-    if (!plan || !selected) return null
-    return positionAt(selected.checkpoints, Date.parse(plan.departure_time) + hour * 3_600_000)
-  }, [plan, selected, hour])
-
   return (
     <MapContainer
       center={US_CENTER}
@@ -287,7 +298,7 @@ export function MapView({
       <MapControls isExpanded={isExpanded} onToggleExpanded={onToggleExpanded} />
       <FitToPlan plan={plan} />
       {picking && <MapPicker picking={picking} onPick={onPick} onCancel={onCancelPick} />}
-      {heatmap && showHeatmap && <HeatGrid heatmap={heatmap} hour={hour} />}
+      {heatmap && showHeatmap && <HeatGrid heatmap={heatmap} playhead={playhead} />}
 
       {others.map((r) => (
         <Polyline
@@ -394,13 +405,7 @@ export function MapView({
         </CircleMarker>
       )}
 
-      {truck && (
-        <Marker position={truck} icon={truckIcon} keyboard={false}>
-          <Tooltip direction="top" offset={[0, -10]}>
-            Truck at hour {hour}
-          </Tooltip>
-        </Marker>
-      )}
+      {plan && selected && <Truck route={selected} departure={plan.departure_time} playhead={playhead} />}
     </MapContainer>
   )
 }

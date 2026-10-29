@@ -7,6 +7,7 @@ amounts over the preceding hour, so they are already in/hr; rain is `rain` + `sh
 import hashlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -19,6 +20,8 @@ from .errors import UpstreamError
 FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
 HOURLY = 'wind_speed_10m,wind_gusts_10m,rain,showers,snowfall'
 POINTS_PER_REQUEST = 100
+# Batches are fetched at the same time, up to this many at once.
+MAX_PARALLEL_REQUESTS = 4
 TIMEOUT_S = 30
 CACHE_S = 15 * 60
 # A point's time zone does not change between requests.
@@ -149,8 +152,10 @@ def hourly(points: list[tuple[float, float]], start: datetime, end: datetime) ->
     result: dict[Key, Series] = {k: {} for k in keys}
     if end < start:
         return result
-    for i in range(0, len(keys), POINTS_PER_REQUEST):
-        chunk = keys[i : i + POINTS_PER_REQUEST]
-        for key, series in zip(chunk, _fetch(chunk, start, end)):
-            result[key] = series
+    chunks = [keys[i : i + POINTS_PER_REQUEST] for i in range(0, len(keys), POINTS_PER_REQUEST)]
+    if not chunks:
+        return result
+    with ThreadPoolExecutor(max_workers=min(len(chunks), MAX_PARALLEL_REQUESTS)) as pool:
+        for chunk, fetched in zip(chunks, pool.map(lambda chunk: _fetch(chunk, start, end), chunks)):
+            result.update(zip(chunk, fetched))
     return result

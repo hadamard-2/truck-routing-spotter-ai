@@ -15,6 +15,7 @@ import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/comp
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatTime, formatWeight } from '@/format'
+import { createPlayhead } from '@/lib/playhead'
 import { cn } from '@/lib/utils'
 
 function placeName(name: string) {
@@ -50,7 +51,7 @@ export default function App() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [heatmap, setHeatmap] = useState<Heatmap | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [hour, setHour] = useState(0)
+  const [playhead] = useState(createPlayhead)
   const [showHeatmap, setShowHeatmap] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(true)
@@ -133,7 +134,7 @@ export default function App() {
       const next = await planTrip(request)
       setPlan(next)
       setSelectedId(next.recommended_route_id)
-      setHour(0)
+      playhead.set(0)
       setHeatmap(null)
       setEditing(false)
       setLastRequest(request)
@@ -204,7 +205,7 @@ export default function App() {
             onSelect={setSelectedId}
             heatmap={heatmap}
             showHeatmap={showHeatmap}
-            hour={hour}
+            playhead={playhead}
             isExpanded={isExpanded}
             onToggleExpanded={() => setIsExpanded((v) => !v)}
             picking={pickingField}
@@ -217,8 +218,7 @@ export default function App() {
           <TimeSlider
             heatmap={heatmap}
             timeZone={plan?.origin.time_zone}
-            hour={hour}
-            onHourChange={setHour}
+            playhead={playhead}
             showHeatmap={showHeatmap}
             onShowHeatmapChange={setShowHeatmap}
             className={cn(

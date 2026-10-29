@@ -1,3 +1,4 @@
+import threading
 from datetime import UTC, datetime
 
 import pytest
@@ -136,3 +137,17 @@ def test_request_does_not_retry_client_errors(monkeypatch, no_sleep):
 def test_time_zone_reads_the_zone_open_meteo_resolves_for_the_point(monkeypatch, no_sleep):
     replay(monkeypatch, FakeResponse(200, {'timezone': 'America/Chicago', 'utc_offset_seconds': -18000}))
     assert weather.time_zone(32.7767, -96.797) == 'America/Chicago'
+
+
+def test_hourly_fetches_batches_at_the_same_time(monkeypatch):
+    # Each fake fetch waits for the other; run one after another, they would time out.
+    both_started = threading.Barrier(2, timeout=2)
+
+    def fake_fetch(keys, start, end):
+        both_started.wait()
+        return [{} for _ in keys]
+
+    monkeypatch.setattr(weather, '_fetch', fake_fetch)
+    monkeypatch.setattr(weather, 'POINTS_PER_REQUEST', 1)
+    now = datetime.now(UTC)
+    assert len(weather.hourly([(35.0, -101.0), (36.0, -101.0)], now, now)) == 2

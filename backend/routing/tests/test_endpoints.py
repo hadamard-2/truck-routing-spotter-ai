@@ -251,3 +251,8 @@ def test_reverse_place(client, monkeypatch):
     }
     assert client.get('/api/places/reverse', {'lat': 'x', 'lon': 1}).status_code == 400
     assert client.get('/api/places/reverse', {'lat': 95, 'lon': 1}).status_code == 400
+
+
+def test_responses_are_compressed_for_clients_that_accept_it(client, providers):
+    response = client.post('/api/plan', body(), content_type='application/json', HTTP_ACCEPT_ENCODING='gzip')
+    assert response['Content-Encoding'] == 'gzip'
