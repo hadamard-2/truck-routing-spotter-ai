@@ -149,6 +149,12 @@
 }
 /* Leaflet */
 
+/* Picking a start or end on the map. */
+.map-picking.leaflet-container,
+.map-picking .leaflet-interactive {
+  cursor: crosshair;
+}
+
 .leaflet-container {
   font-family: inherit;
   background: var(--muted);

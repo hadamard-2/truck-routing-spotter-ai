@@ -1,11 +1,11 @@
 import { Autocomplete } from '@base-ui/react/autocomplete'
-import { MapPinIcon } from 'lucide-react'
+import { CrosshairIcon, MapPinIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 
 import { searchPlaces } from '@/api/client'
 import type { Place } from '@/api/types'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
 import type { PlaceValue } from '@/lib/place'
 
 const MIN_CHARS = 2
@@ -17,10 +17,16 @@ interface Props {
   value: PlaceValue
   onChange: (value: PlaceValue) => void
   invalid?: boolean
+  /** Name of the field for the map button's label, e.g. "start". */
+  pickLabel: string
+  /** Whether the map is waiting for a click to set this field. */
+  picking: boolean
+  /** Arms (or disarms) picking this field on the map. */
+  onPickOnMap: () => void
 }
 
 /** A place input that suggests matching addresses as you type. */
-export function PlaceField({ id, icon, value, onChange, invalid }: Props) {
+export function PlaceField({ id, icon, value, onChange, invalid, pickLabel, picking, onPickOnMap }: Props) {
   const [results, setResults] = useState<Place[]>([])
   const [loading, setLoading] = useState(false)
   const query = value.point ? '' : value.text.trim()
@@ -72,11 +78,19 @@ export function PlaceField({ id, icon, value, onChange, invalid }: Props) {
             />
           }
         />
-        {value.point && (
-          <InputGroupAddon align="inline-end" title="Exact point chosen">
-            <MapPinIcon className="text-primary" aria-label="Exact point chosen" />
-          </InputGroupAddon>
-        )}
+        <InputGroupAddon align="inline-end">
+          {value.point && <MapPinIcon className="text-primary" aria-label="Exact point chosen" />}
+          <InputGroupButton
+            size="icon-xs"
+            aria-label={picking ? `Stop picking the ${pickLabel} on the map` : `Pick the ${pickLabel} on the map`}
+            title={picking ? 'Stop picking on the map' : 'Pick on the map'}
+            aria-pressed={picking}
+            className="aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/90"
+            onClick={onPickOnMap}
+          >
+            <CrosshairIcon />
+          </InputGroupButton>
+        </InputGroupAddon>
       </InputGroup>
       <Autocomplete.Portal>
         <Autocomplete.Positioner sideOffset={4} className="isolate z-1100">

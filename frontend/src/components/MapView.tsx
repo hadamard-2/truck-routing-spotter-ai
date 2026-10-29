@@ -34,8 +34,11 @@ interface Props {
   hour: number
   isExpanded: boolean
   onToggleExpanded: () => void
-  /** Called when the user chooses a clicked point as the trip's start or end. */
+  /** The field the next map click should set; null means clicks don't pick anything. */
+  picking: PlaceField | null
+  /** Called with the clicked point, named by reverse lookup, for the armed field. */
   onPick: (field: PlaceField, place: Place) => void
+  onCancelPick: () => void
   /** Points picked for the next plan, shown until it is planned. */
   draft: Partial<Record<PlaceField, Place>>
 }
@@ -75,52 +78,57 @@ function FitToPlan({ plan }: { plan: Plan | null }) {
   return null
 }
 
-/** Clicking the map offers to use that point as the start or end of the trip. */
-function MapPicker({ onPick }: { onPick: Props['onPick'] }) {
-  const [point, setPoint] = useState<L.LatLng | null>(null)
-  const [busy, setBusy] = useState<PlaceField | null>(null)
-  const lastPopupClose = useRef(0)
+const PICK_LABEL: Record<PlaceField, string> = { origin: 'start', destination: 'end' }
+
+/**
+ * While a field is armed, the next click on the map sets it to that point. The map shows a
+ * crosshair and a hint; routes and markers stop reacting so every click lands on the map.
+ */
+function MapPicker({ picking, onPick, onCancel }: { picking: PlaceField; onPick: Props['onPick']; onCancel: () => void }) {
+  const map = useMap()
+  const hint = useRef<HTMLDivElement>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    map.closePopup()
+    const container = map.getContainer()
+    container.classList.add('map-picking')
+    return () => container.classList.remove('map-picking')
+  }, [map])
+
+  useEffect(() => {
+    if (!hint.current) return
+    L.DomEvent.disableClickPropagation(hint.current)
+    L.DomEvent.disableScrollPropagation(hint.current)
+  }, [])
 
   useMapEvents({
-    // A click that only closes an open popup should not open the picker as well.
-    popupclose: () => {
-      lastPopupClose.current = Date.now()
-    },
-    click: (e) => {
-      if (Date.now() - lastPopupClose.current < 300) return
-      setPoint(e.latlng)
+    click: async (e) => {
+      if (busy) return
+      setBusy(true)
+      const { lat, lng } = e.latlng
+      const place = await reversePlace(lat, lng).catch(() => ({ name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lon: lng }))
+      setBusy(false)
+      onPick(picking, place)
     },
   })
 
-  async function choose(field: PlaceField) {
-    if (!point) return
-    setBusy(field)
-    const { lat, lng } = point
-    const place = await reversePlace(lat, lng).catch(() => ({ name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lon: lng }))
-    onPick(field, place)
-    setBusy(null)
-    setPoint(null)
-  }
-
-  if (!point) return null
+  const Icon = picking === 'origin' ? MapPinIcon : FlagIcon
   return (
-    <Popup position={point} eventHandlers={{ remove: () => setPoint(null) }}>
-      <div className="flex flex-col gap-2 font-sans">
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {point.lat.toFixed(4)}, {point.lng.toFixed(4)}
-        </span>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => choose('origin')}>
-            {busy === 'origin' ? <Spinner data-icon="inline-start" /> : <MapPinIcon data-icon="inline-start" />}
-            Start here
-          </Button>
-          <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => choose('destination')}>
-            {busy === 'destination' ? <Spinner data-icon="inline-start" /> : <FlagIcon data-icon="inline-start" />}
-            End here
-          </Button>
-        </div>
+    // Full-width strip that centres the hint and keeps it clear of the zoom buttons on the right.
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-1000 flex justify-center px-14">
+      <div
+        ref={hint}
+        role="status"
+        className="pointer-events-auto flex items-center gap-2 rounded-lg bg-background py-1 pr-1 pl-3 text-sm shadow-md ring-1 ring-foreground/10"
+      >
+        {busy ? <Spinner className="shrink-0" /> : <Icon className="size-4 shrink-0 text-primary" aria-hidden />}
+        <span>{busy ? 'Finding the address…' : `Click the map to set the ${PICK_LABEL[picking]}`}</span>
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
       </div>
-    </Popup>
+    </div>
   )
 }
 
@@ -174,9 +182,14 @@ export function MapView({
   hour,
   isExpanded,
   onToggleExpanded,
+  picking,
   onPick,
+  onCancelPick,
   draft,
 }: Props) {
+  // While picking, layers are rebuilt non-interactive so clicks fall through to the map.
+  const interactive = picking === null
+  const layerKey = interactive ? 'view' : 'pick'
   const routes = plan?.routes ?? []
   const selected = routes.find((r) => r.id === selectedId) ?? null
   const others = routes.filter((r) => r.id !== selectedId)
@@ -213,12 +226,13 @@ export function MapView({
       <TrackContainerSize />
       <MapControls isExpanded={isExpanded} onToggleExpanded={onToggleExpanded} />
       <FitToPlan plan={plan} />
-      <MapPicker onPick={onPick} />
+      {picking && <MapPicker picking={picking} onPick={onPick} onCancel={onCancelPick} />}
       {heatmap && showHeatmap && <HeatGrid heatmap={heatmap} hour={hour} />}
 
       {others.map((r) => (
         <Polyline
-          key={r.id}
+          key={`${r.id}-${layerKey}`}
+          interactive={interactive}
           positions={lines[r.id]}
           pathOptions={{ color: MAP_COLORS.otherRoute, weight: 4, opacity: 0.5 }}
           bubblingMouseEvents={false}
@@ -231,14 +245,23 @@ export function MapView({
       {selected && (
         <>
           <Polyline
+            key={`casing-${layerKey}`}
+            interactive={interactive}
             positions={lines[selected.id]}
             pathOptions={{ color: '#fff', weight: 8, opacity: 0.9 }}
             bubblingMouseEvents={false}
           />
-          <Polyline positions={lines[selected.id]} pathOptions={{ color: MAP_COLORS.route, weight: 4 }} bubblingMouseEvents={false} />
+          <Polyline
+            key={`line-${layerKey}`}
+            interactive={interactive}
+            positions={lines[selected.id]}
+            pathOptions={{ color: MAP_COLORS.route, weight: 4 }}
+            bubblingMouseEvents={false}
+          />
           {selected.checkpoints.map((c) => (
             <CircleMarker
-              key={`${selected.id}-${c.index}`}
+              key={`${selected.id}-${c.index}-${layerKey}`}
+              interactive={interactive}
               center={[c.lat, c.lon]}
               radius={c.level === 'low' ? 4 : 6}
               bubblingMouseEvents={false}
@@ -260,6 +283,8 @@ export function MapView({
       {plan && (
         <>
           <CircleMarker
+            key={`plan-origin-${layerKey}`}
+            interactive={interactive}
             center={[plan.origin.lat, plan.origin.lon]}
             radius={7}
             pathOptions={{ color: MAP_COLORS.route, weight: 3, fillColor: '#fff', fillOpacity: 1 }}
@@ -268,6 +293,8 @@ export function MapView({
             <Tooltip>{plan.origin.name}</Tooltip>
           </CircleMarker>
           <CircleMarker
+            key={`plan-destination-${layerKey}`}
+            interactive={interactive}
             center={[plan.destination.lat, plan.destination.lon]}
             radius={7}
             pathOptions={{ color: '#fff', weight: 3, fillColor: MAP_COLORS.brand, fillOpacity: 1 }}
@@ -280,6 +307,8 @@ export function MapView({
 
       {draft.origin && (
         <CircleMarker
+          key={`draft-origin-${layerKey}`}
+          interactive={interactive}
           center={[draft.origin.lat, draft.origin.lon]}
           radius={7}
           pathOptions={{ color: MAP_COLORS.route, weight: 3, fillColor: '#fff', fillOpacity: 1, dashArray: '3 3' }}
@@ -290,6 +319,8 @@ export function MapView({
       )}
       {draft.destination && (
         <CircleMarker
+          key={`draft-destination-${layerKey}`}
+          interactive={interactive}
           center={[draft.destination.lat, draft.destination.lon]}
           radius={7}
           pathOptions={{ color: MAP_COLORS.brand, weight: 3, fillColor: '#fff', fillOpacity: 1, dashArray: '3 3' }}

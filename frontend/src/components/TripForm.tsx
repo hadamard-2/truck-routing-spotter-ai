@@ -26,6 +26,10 @@ interface Props {
   onCancel?: () => void
   /** A place chosen on the map; each new `id` fills that field. */
   picked?: PickedPlace
+  /** The field the map is waiting to set, if any. */
+  pickingField: PickedPlace['field'] | null
+  /** Arms or disarms picking a field on the map. */
+  onPickOnMap: (field: PickedPlace['field']) => void
 }
 
 export interface PickedPlace {
@@ -43,7 +47,7 @@ function startOfToday() {
 }
 type Interval = (typeof INTERVALS)[number]
 
-export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked }: Props) {
+export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked, pickingField, onPickOnMap }: Props) {
   const [origin, setOrigin] = useState<PlaceValue>(() => fromRequestPlace(initial?.origin ?? 'Dallas, TX'))
   const [destination, setDestination] = useState<PlaceValue>(() =>
     fromRequestPlace(initial?.destination ?? 'Denver, CO'),
@@ -85,6 +89,9 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
           <FieldLabel htmlFor="origin">From</FieldLabel>
           <PlaceField
             id="origin"
+            pickLabel="start"
+            picking={pickingField === 'origin'}
+            onPickOnMap={() => onPickOnMap('origin')}
             icon={<MapPinIcon />}
             value={origin}
             onChange={setOrigin}
@@ -97,6 +104,9 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
           <FieldLabel htmlFor="destination">To</FieldLabel>
           <PlaceField
             id="destination"
+            pickLabel="end"
+            picking={pickingField === 'destination'}
+            onPickOnMap={() => onPickOnMap('destination')}
             icon={<FlagIcon />}
             value={destination}
             onChange={setDestination}

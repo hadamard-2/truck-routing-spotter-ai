@@ -61,27 +61,47 @@ export default function App() {
   const mapRef = useRef<HTMLDivElement>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const [picked, setPicked] = useState<PickedPlace>()
+  // The field the map is waiting to set; map clicks only pick while this is set.
+  const [pickingField, setPickingField] = useState<PickedPlace['field'] | null>(null)
   const [draft, setDraft] = useState<Partial<Record<PickedPlace['field'], Place>>>({})
+
+  // Esc stops picking on the map first; otherwise it leaves the expanded map.
+  useEffect(() => {
+    if (!pickingField) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPickingField(null)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pickingField])
 
   // Esc leaves the expanded map, like closing a full-screen view.
   useEffect(() => {
-    if (!isExpanded) return
+    if (!isExpanded || pickingField) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsExpanded(false)
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [isExpanded])
+  }, [isExpanded, pickingField])
 
   function cancelEdit() {
     setEditing(false)
     setError(null)
     setDraft({})
+    setPickingField(null)
     setFormKey((k) => k + 1)
   }
 
   function handlePick(field: PickedPlace['field'], place: Place) {
     setPicked({ id: Date.now(), field, place })
     setDraft((d) => ({ ...d, [field]: place }))
-    setEditing(true)
+    setPickingField(null)
+  }
+
+  function togglePickOnMap(field: PickedPlace['field']) {
+    const next = pickingField === field ? null : field
+    setPickingField(next)
+    // On narrow screens the map sits below the form; bring it into view to click on.
+    if (next && !window.matchMedia('(min-width: 1024px)').matches) {
+      requestAnimationFrame(() => mapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    }
   }
 
   function loadHeatmap(next: Plan, retried = false) {
@@ -102,6 +122,7 @@ export default function App() {
   async function handlePlan(request: PlanRequest) {
     setBusy(true)
     setError(null)
+    setPickingField(null)
     try {
       const next = await planTrip(request)
       setPlan(next)
@@ -147,6 +168,8 @@ export default function App() {
             initial={lastRequest}
             onCancel={plan ? cancelEdit : undefined}
             picked={picked}
+            pickingField={pickingField}
+            onPickOnMap={togglePickOnMap}
           />
         </div>
       </header>
@@ -155,7 +178,7 @@ export default function App() {
         ref={mapRef}
         className={cn(
           'relative isolate scroll-mt-4 flex-col gap-3 px-4 pt-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:p-0',
-          plan ? 'flex' : 'hidden',
+          plan || pickingField ? 'flex' : 'hidden',
           isExpanded && 'fixed inset-0 z-40 flex bg-background p-0 lg:p-0',
         )}
       >
@@ -174,7 +197,9 @@ export default function App() {
             hour={hour}
             isExpanded={isExpanded}
             onToggleExpanded={() => setIsExpanded((v) => !v)}
+            picking={pickingField}
             onPick={handlePick}
+            onCancelPick={() => setPickingField(null)}
             draft={draft}
           />
         </div>
