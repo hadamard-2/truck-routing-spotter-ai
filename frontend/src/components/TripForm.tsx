@@ -33,6 +33,8 @@ interface Props {
   onPickOnMap: (field: PickedPlace['field']) => void
   /** Called after From and To trade places, so anything keyed by field can follow. */
   onSwap?: () => void
+  /** Called when the user edits a place field: its exact point if it has one, otherwise undefined. */
+  onPlaceChange?: (field: PickedPlace['field'], place: Place | undefined) => void
 }
 
 export interface PickedPlace {
@@ -50,7 +52,7 @@ function startOfToday() {
 }
 type Interval = (typeof INTERVALS)[number]
 
-export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked, pickingField, onPickOnMap, onSwap }: Props) {
+export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked, pickingField, onPickOnMap, onSwap, onPlaceChange }: Props) {
   const [origin, setOrigin] = useState<PlaceValue>(() => fromRequestPlace(initial?.origin ?? 'Dallas, TX'))
   const [destination, setDestination] = useState<PlaceValue>(() =>
     fromRequestPlace(initial?.destination ?? 'Denver, CO'),
@@ -82,6 +84,12 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
     })
   }
 
+  function changePlace(field: PickedPlace['field'], value: PlaceValue) {
+    if (field === 'origin') setOrigin(value)
+    else setDestination(value)
+    onPlaceChange?.(field, value.point && { name: value.text, ...value.point })
+  }
+
   function swap() {
     setOrigin(destination)
     setDestination(origin)
@@ -104,7 +112,7 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
             // Same colours as the start and end markers on the map.
             icon={<MapPinIcon style={{ color: MAP_COLORS.route }} />}
             value={origin}
-            onChange={setOrigin}
+            onChange={(value) => changePlace('origin', value)}
             invalid={invalid('origin')}
           />
           {errorFor('origin')}
@@ -133,7 +141,7 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
             onPickOnMap={() => onPickOnMap('destination')}
             icon={<FlagIcon style={{ color: MAP_COLORS.brand }} />}
             value={destination}
-            onChange={setDestination}
+            onChange={(value) => changePlace('destination', value)}
             invalid={invalid('destination')}
           />
           {errorFor('destination')}

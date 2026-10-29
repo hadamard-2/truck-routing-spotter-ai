@@ -177,6 +177,7 @@ export default function App() {
             picked={picked}
             pickingField={pickingField}
             onPickOnMap={togglePickOnMap}
+            onPlaceChange={(field, place) => setDraft((d) => ({ ...d, [field]: place }))}
             onSwap={() => {
               setDraft((d) => ({ origin: d.destination, destination: d.origin }))
               setPickingField(null)
