@@ -5,6 +5,7 @@ import {
   CircleMarker,
   MapContainer,
   Marker,
+  Pane,
   Polyline,
   Popup,
   TileLayer,
@@ -46,6 +47,10 @@ interface Props {
 type PlaceField = 'origin' | 'destination'
 
 const US_CENTER: [number, number] = [39.5, -98.35]
+// Start and end markers are SVG in their own pane: a second canvas there would sit over the
+// route canvas and swallow every click meant for routes and checkpoints.
+const ENDPOINT_PANE = 'endpoints'
+const endpointRenderer = L.svg({ pane: ENDPOINT_PANE })
 const truckIcon = L.divIcon({ className: 'truck-marker', html: '<span></span>', iconSize: [18, 18] })
 
 /** Leaflet measures its container once; re-measure when the layout changes size or visibility. */
@@ -132,7 +137,59 @@ function MapPicker({ picking, onPick, onCancel }: { picking: PlaceField; onPick:
   )
 }
 
-function CheckpointPopup({ checkpoint }: { checkpoint: Checkpoint }) {
+/**
+ * A start or end marker. When the selected route has a checkpoint here, its popup shows that
+ * checkpoint's weather, and a ring in its risk colour flags anything above Low.
+ */
+function Endpoint({
+  place,
+  checkpoint,
+  title,
+  stroke,
+  fill,
+  interactive,
+}: {
+  place: Place
+  checkpoint?: Checkpoint
+  title: string
+  stroke: string
+  fill: string
+  interactive: boolean
+}) {
+  const level = checkpoint?.level
+  const center: [number, number] = [place.lat, place.lon]
+  return (
+    <>
+      {level && level !== 'low' && (
+        <CircleMarker
+          center={center}
+          radius={11}
+          renderer={endpointRenderer}
+          interactive={false}
+          pathOptions={{ color: LEVEL_COLOR[level], weight: 3, fill: false }}
+        />
+      )}
+      <CircleMarker
+        center={center}
+        radius={7}
+        renderer={endpointRenderer}
+        interactive={interactive}
+        pathOptions={{ color: stroke, weight: 3, fillColor: fill, fillOpacity: 1 }}
+        bubblingMouseEvents={false}
+      >
+        {/* Inside a custom pane, popups and tooltips would inherit it and sit under the markers. */}
+        <Tooltip pane="tooltipPane">{place.name}</Tooltip>
+        {checkpoint && (
+          <Popup pane="popupPane">
+            <CheckpointPopup checkpoint={checkpoint} title={`${title}: ${place.name.split(',')[0]}`} />
+          </Popup>
+        )}
+      </CircleMarker>
+    </>
+  )
+}
+
+function CheckpointPopup({ checkpoint, title }: { checkpoint: Checkpoint; title?: string }) {
   const { weather, levels, level, load_rule } = checkpoint
   const rows = weather && levels
     ? [
@@ -144,7 +201,7 @@ function CheckpointPopup({ checkpoint }: { checkpoint: Checkpoint }) {
   return (
     <div className="flex min-w-56 flex-col gap-2 font-sans text-xs text-foreground tabular-nums">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium">Mile {Math.round(checkpoint.mile)}</span>
+        <span className="text-sm font-medium">{title ?? `Mile ${Math.round(checkpoint.mile)}`}</span>
         <Badge variant="outline" className="gap-1.5">
           <span className={cn('size-2 rounded-full', level ? LEVEL_BG[level] : 'bg-risk-unknown')} aria-hidden />
           {level ? LEVEL_LABEL[level] : 'No forecast'}
@@ -258,7 +315,8 @@ export function MapView({
             pathOptions={{ color: MAP_COLORS.route, weight: 4 }}
             bubblingMouseEvents={false}
           />
-          {selected.checkpoints.map((c) => (
+          {/* The first and last checkpoints sit on the start and end markers, which show their details. */}
+          {selected.checkpoints.slice(1, -1).map((c) => (
             <CircleMarker
               key={`${selected.id}-${c.index}-${layerKey}`}
               interactive={interactive}
@@ -280,30 +338,31 @@ export function MapView({
         </>
       )}
 
-      {plan && (
-        <>
-          <CircleMarker
-            key={`plan-origin-${layerKey}`}
-            interactive={interactive}
-            center={[plan.origin.lat, plan.origin.lon]}
-            radius={7}
-            pathOptions={{ color: MAP_COLORS.route, weight: 3, fillColor: '#fff', fillOpacity: 1 }}
-            bubblingMouseEvents={false}
-          >
-            <Tooltip>{plan.origin.name}</Tooltip>
-          </CircleMarker>
-          <CircleMarker
-            key={`plan-destination-${layerKey}`}
-            interactive={interactive}
-            center={[plan.destination.lat, plan.destination.lon]}
-            radius={7}
-            pathOptions={{ color: '#fff', weight: 3, fillColor: MAP_COLORS.brand, fillOpacity: 1 }}
-            bubblingMouseEvents={false}
-          >
-            <Tooltip>{plan.destination.name}</Tooltip>
-          </CircleMarker>
-        </>
-      )}
+      {/* Start and end sit in their own pane above routes and checkpoints, so redrawn layers never cover them. */}
+      <Pane name={ENDPOINT_PANE} style={{ zIndex: 450 }}>
+        {plan && (
+          <>
+            <Endpoint
+              key={`plan-origin-${layerKey}`}
+              interactive={interactive}
+              place={plan.origin}
+              checkpoint={selected?.checkpoints[0]}
+              title="Start"
+              stroke={MAP_COLORS.route}
+              fill="#fff"
+            />
+            <Endpoint
+              key={`plan-destination-${layerKey}`}
+              interactive={interactive}
+              place={plan.destination}
+              checkpoint={selected?.checkpoints.at(-1)}
+              title="Arrival"
+              stroke="#fff"
+              fill={MAP_COLORS.brand}
+            />
+          </>
+        )}
+      </Pane>
 
       {draft.origin && (
         <CircleMarker

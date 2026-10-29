@@ -149,6 +149,11 @@
 }
 /* Leaflet */
 
+/* The start/end pane's SVG spans the map; only its markers should take clicks. */
+.leaflet-endpoints-pane > svg {
+  pointer-events: none;
+}
+
 /* Picking a start or end on the map. */
 .map-picking.leaflet-container,
 .map-picking .leaflet-interactive {
