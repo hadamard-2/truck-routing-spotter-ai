@@ -15,7 +15,14 @@ interface Props {
   className?: string
 }
 
-export function TimeSlider({ heatmap, hour, onHourChange, showHeatmap, onShowHeatmapChange, className }: Props) {
+export function TimeSlider({
+  heatmap,
+  hour,
+  onHourChange,
+  showHeatmap,
+  onShowHeatmapChange,
+  className,
+}: Props) {
   const last = heatmap.frames.length - 1
   const frame = heatmap.frames[hour]
 
@@ -53,6 +60,12 @@ export function TimeSlider({ heatmap, hour, onHourChange, showHeatmap, onShowHea
             {LEVEL_LABEL[level]}
           </span>
         ))}
+        {showHeatmap && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-3 rounded-[2px] border border-dashed border-muted-foreground" aria-hidden />
+            Forecast area
+          </span>
+        )}
       </div>
     </div>
   )

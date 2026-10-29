@@ -3,7 +3,9 @@ import { useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
 
 import type { Heatmap } from '@/api/types'
-import { LEVEL_COLOR, LEVELS } from '@/risk'
+import { LEVEL_COLOR, LEVELS, MAP_COLORS } from '@/risk'
+
+const AREA_OUTLINE = MAP_COLORS.otherRoute
 
 interface Props {
   heatmap: Heatmap
@@ -38,6 +40,25 @@ export function HeatGrid({ heatmap, hour }: Props) {
     return () => {
       group.remove()
       cells.current = []
+    }
+  }, [map, heatmap])
+
+  // Outline where forecast data exists, so a storm cut off at the edge reads as "no data beyond here".
+  useEffect(() => {
+    const lons = heatmap.points.map((p) => p.lon)
+    const lats = heatmap.points.map((p) => p.lat)
+    const uniqueLons = [...new Set(lons)].sort((a, b) => a - b)
+    const uniqueLats = [...new Set(lats)].sort((a, b) => a - b)
+    const half = Math.min(uniqueLons[1] - uniqueLons[0] || 0.4, uniqueLats[1] - uniqueLats[0] || 0.4) / 2
+    const outline = L.rectangle(
+      [
+        [uniqueLats[0] - half, uniqueLons[0] - half],
+        [uniqueLats[uniqueLats.length - 1] + half, uniqueLons[uniqueLons.length - 1] + half],
+      ],
+      { color: AREA_OUTLINE, weight: 1.5, opacity: 0.7, dashArray: '6 6', fill: false, interactive: false },
+    ).addTo(map)
+    return () => {
+      outline.remove()
     }
   }, [map, heatmap])
 
