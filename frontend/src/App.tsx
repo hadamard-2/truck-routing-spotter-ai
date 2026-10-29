@@ -1,5 +1,5 @@
 import { AlertCircleIcon, ArrowRightIcon, InfoIcon, PencilIcon, RouteIcon, TruckIcon } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { ApiError, getHeatmap, planTrip } from '@/api/client'
@@ -55,6 +55,23 @@ export default function App() {
   const [editing, setEditing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const sync = () => setIsFullscreen(document.fullscreenElement === mapRef.current)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+
+  // iPhone Safari only allows full screen for video, so the button is hidden there.
+  const toggleFullscreen = document.fullscreenEnabled
+    ? () => {
+        const request = document.fullscreenElement
+          ? document.exitFullscreen()
+          : mapRef.current?.requestFullscreen()
+        request?.catch(() => toast.error('Full screen is not available in this browser.'))
+      }
+    : undefined
 
   async function handlePlan(request: PlanRequest) {
     setBusy(true)
@@ -89,7 +106,7 @@ export default function App() {
             <TruckIcon className="size-4" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-sm font-semibold">Weather-aware routing</h1>
+            <h1 className="text-sm font-semibold">Truck Routr</h1>
             <p className="text-xs text-muted-foreground">The safest route for your load and departure</p>
           </div>
         </div>
@@ -105,9 +122,15 @@ export default function App() {
         className={cn(
           'relative scroll-mt-4 flex-col gap-3 px-4 pt-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:p-0',
           plan ? 'flex' : 'hidden',
+          isFullscreen && 'bg-background p-0',
         )}
       >
-        <div className="h-[60svh] overflow-hidden rounded-xl ring-1 ring-foreground/10 lg:h-full lg:rounded-none lg:ring-0">
+        <div
+          className={cn(
+            'h-[60svh] overflow-hidden rounded-xl ring-1 ring-foreground/10 lg:h-full lg:rounded-none lg:ring-0',
+            isFullscreen && 'h-full rounded-none ring-0',
+          )}
+        >
           <MapView
             plan={plan}
             selectedId={selectedId}
@@ -115,6 +138,8 @@ export default function App() {
             heatmap={heatmap}
             showHeatmap={showHeatmap}
             hour={hour}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
           />
         </div>
         {heatmap ? (
@@ -124,7 +149,10 @@ export default function App() {
             onHourChange={setHour}
             showHeatmap={showHeatmap}
             onShowHeatmapChange={setShowHeatmap}
-            className="lg:absolute lg:inset-x-6 lg:bottom-6 lg:z-1000 lg:mx-auto lg:max-w-xl lg:shadow-lg"
+            className={cn(
+              'lg:absolute lg:inset-x-6 lg:bottom-6 lg:z-1000 lg:mx-auto lg:max-w-xl lg:shadow-lg',
+              isFullscreen && 'absolute inset-x-3 bottom-3 z-1000 mx-auto max-w-xl shadow-lg',
+            )}
           />
         ) : (
           plan && <Skeleton className="h-28 rounded-xl lg:hidden" />

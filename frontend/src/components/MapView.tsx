@@ -9,6 +9,7 @@ import { formatTime } from '@/format'
 import { cn } from '@/lib/utils'
 import { LEVEL_BG, LEVEL_COLOR, LEVEL_LABEL, LOAD_RULE_TEXT, MAP_COLORS, UNKNOWN_COLOR, positionAt } from '@/risk'
 import { HeatGrid } from './HeatGrid'
+import { MapControls } from './MapControls'
 
 interface Props {
   plan: Plan | null
@@ -17,6 +18,8 @@ interface Props {
   heatmap: Heatmap | null
   showHeatmap: boolean
   hour: number
+  isFullscreen: boolean
+  onToggleFullscreen?: () => void
 }
 
 const US_CENTER: [number, number] = [39.5, -98.35]
@@ -93,7 +96,16 @@ function CheckpointPopup({ checkpoint }: { checkpoint: Checkpoint }) {
   )
 }
 
-export function MapView({ plan, selectedId, onSelect, heatmap, showHeatmap, hour }: Props) {
+export function MapView({
+  plan,
+  selectedId,
+  onSelect,
+  heatmap,
+  showHeatmap,
+  hour,
+  isFullscreen,
+  onToggleFullscreen,
+}: Props) {
   const routes = plan?.routes ?? []
   const selected = routes.find((r) => r.id === selectedId) ?? null
   const others = routes.filter((r) => r.id !== selectedId)
@@ -118,6 +130,7 @@ export function MapView({ plan, selectedId, onSelect, heatmap, showHeatmap, hour
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <TrackContainerSize />
+      <MapControls isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
       <FitToPlan plan={plan} />
       {heatmap && showHeatmap && <HeatGrid heatmap={heatmap} hour={hour} />}
 

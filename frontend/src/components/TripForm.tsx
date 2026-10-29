@@ -6,9 +6,9 @@ import type { PlanRequest } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/components/ui/input-group'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { TimePicker, TimePickerContent, TimePickerPanel, TimePickerTrigger } from '@/components/reui/time-picker'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { formatDate, nextHour, toUtcIso } from '@/format'
@@ -118,15 +118,20 @@ export function TripForm({ busy, fieldError, onSubmit }: Props) {
                 />
               </PopoverContent>
             </Popover>
-            <Input
-              type="time"
-              aria-label="Departure time"
-              className="w-36"
+            <TimePicker
               value={time}
-              onChange={(e) => setTime(e.target.value)}
+              onValueChange={(next) => next && setTime(next)}
+              hourCycle={12}
+              minuteStep={5}
               required
-              aria-invalid={invalid('departure_time') || undefined}
-            />
+              invalid={invalid('departure_time')}
+              aria-label="Departure time"
+            >
+              <TimePickerTrigger className="w-36" />
+              <TimePickerContent>
+                <TimePickerPanel />
+              </TimePickerContent>
+            </TimePicker>
           </div>
           {errorFor('departure_time')}
         </Field>
@@ -166,7 +171,11 @@ export function TripForm({ busy, fieldError, onSubmit }: Props) {
             }}
           >
             {INTERVALS.map((value) => (
-              <ToggleGroupItem key={value} value={String(value)} className="flex-1">
+              <ToggleGroupItem
+                key={value}
+                value={String(value)}
+                className="flex-1 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/90 aria-pressed:hover:text-primary-foreground"
+              >
                 {value} mi
               </ToggleGroupItem>
             ))}
