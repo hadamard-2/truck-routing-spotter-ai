@@ -217,6 +217,7 @@ export default function App() {
         {heatmap ? (
           <TimeSlider
             heatmap={heatmap}
+            departure={plan?.departure_time ?? heatmap.start}
             timeZone={plan?.origin.time_zone}
             playhead={playhead}
             showHeatmap={showHeatmap}

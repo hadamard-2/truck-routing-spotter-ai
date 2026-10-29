@@ -79,6 +79,8 @@ function paint(canvas: HTMLCanvasElement, { cols, rows, pixels }: Layout, frames
 
 interface Props {
   heatmap: Heatmap
+  /** The plan's departure; the slider counts hours from it, the heatmap from the whole hour before. */
+  departure: string
   playhead: Playhead
 }
 
@@ -86,9 +88,9 @@ interface Props {
  * Corridor weather as one small image, a pixel per forecast point, that the browser smooths as it
  * scales it over the map. Moving the slider repaints only those few hundred pixels.
  */
-export function HeatGrid({ heatmap, playhead }: Props) {
+export function HeatGrid({ heatmap, departure, playhead }: Props) {
   const map = useMap()
-  const hour = usePlayhead(playhead)
+  const hour = usePlayhead(playhead) + (Date.parse(departure) - Date.parse(heatmap.start)) / 3_600_000
   const grid = useMemo(() => layout(heatmap), [heatmap])
   const frames = useMemo(() => heatmap.frames.map(frameColors), [heatmap])
   const canvas = useMemo(() => Object.assign(document.createElement('canvas'), { width: grid.cols, height: grid.rows }), [grid])

@@ -18,6 +18,8 @@ const STEP_HOURS = 0.25
 
 interface Props {
   heatmap: Heatmap
+  /** Hour 0 of the slider. */
+  departure: string
   /** IANA zone the frame's time is shown in. */
   timeZone?: string
   playhead: Playhead
@@ -26,11 +28,11 @@ interface Props {
   className?: string
 }
 
-export function TimeSlider({ heatmap, timeZone, playhead, showHeatmap, onShowHeatmapChange, className }: Props) {
+export function TimeSlider({ heatmap, departure, timeZone, playhead, showHeatmap, onShowHeatmapChange, className }: Props) {
   const hour = usePlayhead(playhead)
   const [playing, setPlaying] = useState(false)
   const last = heatmap.frames.length - 1
-  const time = new Date(Date.parse(heatmap.start) + hour * 3_600_000).toISOString()
+  const time = new Date(Date.parse(departure) + hour * 3_600_000).toISOString()
 
   useEffect(() => {
     if (!playing) return

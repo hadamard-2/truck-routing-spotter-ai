@@ -298,7 +298,7 @@ export function MapView({
       <MapControls isExpanded={isExpanded} onToggleExpanded={onToggleExpanded} />
       <FitToPlan plan={plan} />
       {picking && <MapPicker picking={picking} onPick={onPick} onCancel={onCancelPick} />}
-      {heatmap && showHeatmap && <HeatGrid heatmap={heatmap} playhead={playhead} />}
+      {plan && heatmap && showHeatmap && <HeatGrid heatmap={heatmap} departure={plan.departure_time} playhead={playhead} />}
 
       {others.map((r) => (
         <Polyline
