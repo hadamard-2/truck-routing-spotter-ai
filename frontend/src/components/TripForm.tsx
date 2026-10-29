@@ -1,4 +1,4 @@
-import { CalendarIcon, FlagIcon, MapPinIcon } from 'lucide-react'
+import { ArrowUpDownIcon, CalendarIcon, FlagIcon, MapPinIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { SubmitEvent } from 'react'
 
@@ -14,6 +14,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { formatDate, fromUtcIso, nextHour, toUtcIso } from '@/format'
 import { fromRequestPlace, toRequestPlace } from '@/lib/place'
+import { MAP_COLORS } from '@/risk'
 import type { PlaceValue } from '@/lib/place'
 
 interface Props {
@@ -30,6 +31,8 @@ interface Props {
   pickingField: PickedPlace['field'] | null
   /** Arms or disarms picking a field on the map. */
   onPickOnMap: (field: PickedPlace['field']) => void
+  /** Called after From and To trade places, so anything keyed by field can follow. */
+  onSwap?: () => void
 }
 
 export interface PickedPlace {
@@ -47,7 +50,7 @@ function startOfToday() {
 }
 type Interval = (typeof INTERVALS)[number]
 
-export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked, pickingField, onPickOnMap }: Props) {
+export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked, pickingField, onPickOnMap, onSwap }: Props) {
   const [origin, setOrigin] = useState<PlaceValue>(() => fromRequestPlace(initial?.origin ?? 'Dallas, TX'))
   const [destination, setDestination] = useState<PlaceValue>(() =>
     fromRequestPlace(initial?.destination ?? 'Denver, CO'),
@@ -79,6 +82,12 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
     })
   }
 
+  function swap() {
+    setOrigin(destination)
+    setDestination(origin)
+    onSwap?.()
+  }
+
   const invalid = (field: string) => fieldError?.field === field
   const errorFor = (field: string) => (invalid(field) ? <FieldError>{fieldError?.message}</FieldError> : null)
 
@@ -92,7 +101,8 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
             pickLabel="start"
             picking={pickingField === 'origin'}
             onPickOnMap={() => onPickOnMap('origin')}
-            icon={<MapPinIcon />}
+            // Same colours as the start and end markers on the map.
+            icon={<MapPinIcon style={{ color: MAP_COLORS.route }} />}
             value={origin}
             onChange={setOrigin}
             invalid={invalid('origin')}
@@ -101,13 +111,19 @@ export function TripForm({ busy, fieldError, onSubmit, initial, onCancel, picked
         </Field>
 
         <Field data-invalid={invalid('destination') || undefined}>
-          <FieldLabel htmlFor="destination">To</FieldLabel>
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel htmlFor="destination">To</FieldLabel>
+            <Button type="button" variant="ghost" size="xs" className="-my-1 text-muted-foreground" onClick={swap}>
+              <ArrowUpDownIcon data-icon="inline-start" />
+              Swap
+            </Button>
+          </div>
           <PlaceField
             id="destination"
             pickLabel="end"
             picking={pickingField === 'destination'}
             onPickOnMap={() => onPickOnMap('destination')}
-            icon={<FlagIcon />}
+            icon={<FlagIcon style={{ color: MAP_COLORS.brand }} />}
             value={destination}
             onChange={setDestination}
             invalid={invalid('destination')}

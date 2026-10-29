@@ -170,6 +170,10 @@ export default function App() {
             picked={picked}
             pickingField={pickingField}
             onPickOnMap={togglePickOnMap}
+            onSwap={() => {
+              setDraft((d) => ({ origin: d.destination, destination: d.origin }))
+              setPickingField(null)
+            }}
           />
         </div>
       </header>
