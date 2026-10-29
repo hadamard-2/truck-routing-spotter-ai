@@ -46,3 +46,11 @@ export function toUtcIso(date: Date, time: string): string {
   d.setHours(h, m, 0, 0)
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
+
+/** Splits a UTC ISO time into a local calendar date and an `HH:MM` local time. */
+export function fromUtcIso(iso: string): { date: Date; time: string } {
+  const d = new Date(iso)
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  d.setHours(0, 0, 0, 0)
+  return { date: d, time }
+}

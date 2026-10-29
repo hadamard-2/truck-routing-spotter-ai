@@ -1,4 +1,4 @@
-import { AlertCircleIcon, ArrowRightIcon, InfoIcon, PencilIcon, RouteIcon, TruckIcon } from 'lucide-react'
+import { AlertCircleIcon, ArrowRightIcon, HistoryIcon, InfoIcon, PencilIcon, RouteIcon, TruckIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -53,6 +53,9 @@ export default function App() {
   const [showHeatmap, setShowHeatmap] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(true)
+  // The last trip that was planned, so Cancel can put the form back the way it was.
+  const [lastRequest, setLastRequest] = useState<PlanRequest | undefined>()
+  const [formKey, setFormKey] = useState(0)
   const [error, setError] = useState<ApiError | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -65,6 +68,12 @@ export default function App() {
     return () => document.removeEventListener('keydown', onKey)
   }, [isExpanded])
 
+  function cancelEdit() {
+    setEditing(false)
+    setError(null)
+    setFormKey((k) => k + 1)
+  }
+
   async function handlePlan(request: PlanRequest) {
     setBusy(true)
     setError(null)
@@ -75,6 +84,7 @@ export default function App() {
       setHour(0)
       setHeatmap(null)
       setEditing(false)
+      setLastRequest(request)
       getHeatmap(next)
         .then(setHeatmap)
         .catch((e: ApiError) => toast.error('Weather layer unavailable', { description: e.message }))
@@ -105,7 +115,14 @@ export default function App() {
 
         {plan && !editing && <TripSummary plan={plan} onEdit={() => setEditing(true)} />}
         <div className={cn(plan && !editing && 'hidden')}>
-          <TripForm busy={busy} fieldError={fieldError} onSubmit={handlePlan} />
+          <TripForm
+            key={formKey}
+            busy={busy}
+            fieldError={fieldError}
+            onSubmit={handlePlan}
+            initial={lastRequest}
+            onCancel={plan ? cancelEdit : undefined}
+          />
         </div>
       </header>
 
@@ -163,6 +180,14 @@ export default function App() {
           </Alert>
         )}
 
+        {plan && editing && (
+          <Alert>
+            <HistoryIcon />
+            <AlertTitle>Showing your last plan</AlertTitle>
+            <AlertDescription>Plan routes again to update it for your changes.</AlertDescription>
+          </Alert>
+        )}
+
         {plan?.warnings.map((w) => (
           <Alert key={w.code}>
             <InfoIcon />
@@ -186,7 +211,9 @@ export default function App() {
                 Ranked by miles of no-travel, severe and high weather, then average risk, then drive time.
               </p>
             </div>
-            <RouteList routes={plan.routes} selectedId={selectedId} onSelect={setSelectedId} />
+            <div className={cn('transition-opacity', editing && 'opacity-60')}>
+              <RouteList routes={plan.routes} selectedId={selectedId} onSelect={setSelectedId} />
+            </div>
           </div>
         ) : (
           !error && (

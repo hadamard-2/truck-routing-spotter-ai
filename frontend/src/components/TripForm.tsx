@@ -11,12 +11,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { TimePicker, TimePickerContent, TimePickerPanel, TimePickerTrigger } from '@/components/reui/time-picker'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { formatDate, nextHour, toUtcIso } from '@/format'
+import { formatDate, fromUtcIso, nextHour, toUtcIso } from '@/format'
 
 interface Props {
   busy: boolean
   fieldError?: { field: string; message: string }
   onSubmit: (request: PlanRequest) => void
+  /** Values to start from, e.g. the last submitted trip. */
+  initial?: PlanRequest
+  /** When set, shows a Cancel button that leaves the form without planning. */
+  onCancel?: () => void
 }
 
 const INTERVALS = [10, 25, 50] as const
@@ -28,15 +32,15 @@ function startOfToday() {
 }
 type Interval = (typeof INTERVALS)[number]
 
-export function TripForm({ busy, fieldError, onSubmit }: Props) {
-  const [origin, setOrigin] = useState('Dallas, TX')
-  const [destination, setDestination] = useState('Denver, CO')
-  const [date, setDate] = useState(() => nextHour().date)
-  const [time, setTime] = useState(() => nextHour().time)
+export function TripForm({ busy, fieldError, onSubmit, initial, onCancel }: Props) {
+  const [origin, setOrigin] = useState(initial?.origin ?? 'Dallas, TX')
+  const [destination, setDestination] = useState(initial?.destination ?? 'Denver, CO')
+  const [date, setDate] = useState(() => (initial ? fromUtcIso(initial.departure_time) : nextHour()).date)
+  const [time, setTime] = useState(() => (initial ? fromUtcIso(initial.departure_time) : nextHour()).time)
   const [dateOpen, setDateOpen] = useState(false)
   const [today] = useState(startOfToday)
-  const [weight, setWeight] = useState('42000')
-  const [interval, setInterval] = useState<Interval>(25)
+  const [weight, setWeight] = useState(String(initial?.load_weight_lb ?? 42000))
+  const [interval, setInterval] = useState<Interval>(initial?.sample_interval_mi ?? 25)
 
   function submit(event: SubmitEvent) {
     event.preventDefault()
@@ -184,10 +188,17 @@ export function TripForm({ busy, fieldError, onSubmit }: Props) {
           {errorFor('sample_interval_mi')}
         </Field>
 
-        <Button type="submit" size="lg" disabled={busy}>
-          {busy && <Spinner data-icon="inline-start" />}
-          {busy ? 'Planning routes' : 'Plan routes'}
-        </Button>
+        <div className="flex gap-2">
+          {onCancel && (
+            <Button type="button" variant="outline" size="lg" onClick={onCancel} disabled={busy}>
+              Cancel
+            </Button>
+          )}
+          <Button type="submit" size="lg" className="flex-1" disabled={busy}>
+            {busy && <Spinner data-icon="inline-start" />}
+            {busy ? 'Planning routes' : 'Plan routes'}
+          </Button>
+        </div>
       </FieldGroup>
     </form>
   )
