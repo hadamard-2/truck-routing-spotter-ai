@@ -30,7 +30,10 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-insecure-key')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'false').lower() == 'true'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', *filter(None, os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(','))]
+
+# The load balancer in front of the container terminates TLS and forwards plain HTTP.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -135,6 +138,6 @@ MAILERS = {
     },
 }
 
-CORS_ALLOWED_ORIGINS = ['http://localhost:5173']
+CORS_ALLOWED_ORIGINS = ['http://localhost:5173', *filter(None, os.environ.get('CORS_ALLOWED_ORIGINS', '').split(','))]
 
 ORS_API_KEY = os.environ.get('ORS_API_KEY', '')
