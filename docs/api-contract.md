@@ -84,9 +84,10 @@ Field notes:
 
 - `routes` holds up to 3 entries, ordered by `rank` (1 = recommended).
 - `checkpoints[i].segment_mi` is the stretch of road this checkpoint stands for; summing `segment_mi` by `level` gives `miles_by_level`, so the UI never re-derives it.
-- `forecast_time` is the forecast hour actually used for `eta` (the hour bucket the ETA falls into), so the UI can show both.
+- `forecast_time` is the forecast hour actually used for `eta` (the hour nearest the ETA), so the UI can show both.
 - `levels` is the per-condition classification before load rules; `level` is the final checkpoint level. `load_rule` is `null`, `"wind_45_54_over_30000"` or `"wind_35_44_over_40000"` when a load rule raised the level.
 - `rank_reason` is a one-line, human-readable reason for the route's position.
+- `average_risk` and `worst_level` cover only checkpoints with a forecast; both are `null` when no checkpoint has one.
 - `warnings` carries non-fatal notes as `{ "code": "...", "message": "..." }`, e.g. `fewer_routes` (fewer than 3 distinct routes found) or `beyond_forecast` (some checkpoints fall past the forecast horizon; their `level` is `null` and their `weather` is `null`).
 
 ## `GET /api/heatmap`
@@ -122,7 +123,8 @@ Weather risk over the trip corridor, hour by hour, for the slider.
 ```
 
 - `frames` has 49 entries, hours 0 to 48.
-- Every array in a frame is aligned by index with `points`. `score` is the 0–4 risk score; the raw arrays let the UI switch the heatmap to a single condition.
+- Every array in a frame is aligned by index with `points`. `score` is the 0–4 risk score; the raw arrays let the UI switch the heatmap to a single condition. Values are `null` where the forecast has no data for that hour.
+- `points` is an even grid over `bbox` of at most about 250 points, so the response stays small and within the weather provider's per-minute limits.
 
 ## Errors
 
@@ -135,7 +137,7 @@ Any non-2xx response has this body:
 | Status | Codes |
 |---|---|
 | `400` | `invalid_input`, `geocode_not_found` |
-| `502` | `routing_unavailable`, `weather_unavailable` |
+| `502` | `geocoding_unavailable`, `routing_unavailable`, `weather_unavailable` |
 
 `field` is present only when the error belongs to one request field.
 

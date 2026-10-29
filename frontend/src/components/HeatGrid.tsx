@@ -68,7 +68,7 @@ export function HeatGrid({ heatmap, hour }: Props) {
     cells.current.forEach((cell, i) => {
       const score = frame.score[i]
       cell.setStyle(
-        score > 0
+        score != null && score > 0
           ? { fillColor: LEVEL_COLOR[LEVELS[score]], fillOpacity: 0.18 + score * 0.08 }
           : { fillOpacity: 0 },
       )

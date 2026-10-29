@@ -39,8 +39,8 @@ export interface Checkpoint {
 
 export interface RouteSummary {
   miles_by_level: Record<RiskLevel, number>
-  average_risk: number
-  worst_level: RiskLevel
+  average_risk: number | null
+  worst_level: RiskLevel | null
   rank_reason: string
 }
 
@@ -77,10 +77,10 @@ export interface Plan {
 export interface HeatmapFrame {
   hour: number
   time: string
-  score: number[]
-  wind_mph: number[]
-  rain_in_hr: number[]
-  snow_in_hr: number[]
+  score: (number | null)[]
+  wind_mph: (number | null)[]
+  rain_in_hr: (number | null)[]
+  snow_in_hr: (number | null)[]
 }
 
 export interface Heatmap {

@@ -1,21 +1,8 @@
-import json
-from functools import cache
-from pathlib import Path
-
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-FIXTURES = Path(__file__).parent / 'fixtures'
-SAMPLE_INTERVALS = (10, 25, 50)
-SAMPLE_WARNING = {
-    'code': 'sample_data',
-    'message': 'Showing sample data: Dallas to Denver with synthetic weather.',
-}
-
-
-@cache
-def _fixture(name):
-    return json.loads((FIXTURES / name).read_text())
+from routing.planner import InvalidInput, build_heatmap, build_plan
+from routing.services.errors import NotFound, UpstreamError
 
 
 def _error(status, code, message, field=None):
@@ -25,6 +12,17 @@ def _error(status, code, message, field=None):
     return Response({'error': body}, status=status)
 
 
+def _respond(build, data):
+    try:
+        return Response(build(data))
+    except InvalidInput as e:
+        return _error(400, 'invalid_input', e.message, e.field)
+    except NotFound as e:
+        return _error(400, e.code, e.message, e.field)
+    except UpstreamError as e:
+        return _error(502, e.code, e.message)
+
+
 @api_view(['GET'])
 def health(request):
     return Response({'status': 'ok'})
@@ -32,22 +30,9 @@ def health(request):
 
 @api_view(['POST'])
 def plan(request):
-    data = request.data
-    for field in ('origin', 'destination', 'departure_time'):
-        if not data.get(field):
-            return _error(400, 'invalid_input', f'{field} is required.', field)
-    weight = data.get('load_weight_lb')
-    if not isinstance(weight, int) or isinstance(weight, bool) or weight <= 0:
-        return _error(400, 'invalid_input', 'load_weight_lb must be a positive integer.', 'load_weight_lb')
-    interval = data.get('sample_interval_mi')
-    if interval not in SAMPLE_INTERVALS:
-        return _error(400, 'invalid_input', 'sample_interval_mi must be 10, 25 or 50.', 'sample_interval_mi')
-
-    body = dict(_fixture(f'plan_{interval}.json'))
-    body['warnings'] = [*body['warnings'], SAMPLE_WARNING]
-    return Response(body)
+    return _respond(build_plan, request.data)
 
 
 @api_view(['GET'])
 def heatmap(request):
-    return Response(_fixture('heatmap.json'))
+    return _respond(build_heatmap, request.query_params)

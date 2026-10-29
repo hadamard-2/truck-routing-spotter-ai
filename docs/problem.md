@@ -39,9 +39,11 @@ These follow directly from the spec's wording and were settled without needing a
 - Load rules: strictly "over" the stated weight, so exactly 40,000 lb in 35–44 mph wind stays High.
 - Miles per level: each checkpoint stands for the stretch of road from it to the next checkpoint, so a route's miles at each level sum to its length.
 - Average risk: levels are scored Low 0, Moderate 1, High 2, Severe 3, No Travel 4, and averaged weighted by miles.
-- Forecast hour: a checkpoint uses the forecast hour its ETA falls in.
+- Forecast hour: a checkpoint uses the forecast hour nearest its ETA (an ETA of 14:40 reads the 15:00 forecast), so the weather is never more than 30 minutes from the truck's arrival.
 - Beyond the forecast: checkpoints past the forecast horizon get no level and the response carries a `beyond_forecast` warning instead of failing.
-- Three routes: the direct route plus two forced through via points (see Findings), because the routing API's own alternatives stop at 100 km.
+- Three routes: the direct route plus two forced through via points (see Findings), because the routing API's own alternatives stop at 100 km. A via route that drives more than 5 miles of road out and back (it snapped to a dead end) is retried with the via point at another distance, and a via route sharing over 85% of its road with a route already kept is dropped; the response then warns `fewer_routes`.
+- Departure window: from 1 hour ago to 14 days ahead, the useful reach of the forecast.
+- Weather lookups are rounded to ~1 km (0.01°), finer than the forecast grid, and the heatmap grid holds at most about 250 points, to stay within Open-Meteo's per-minute request limit (each location counts as a request).
 
 ## Findings
 
