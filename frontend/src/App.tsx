@@ -55,23 +55,15 @@ export default function App() {
   const [editing, setEditing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
+  // Esc leaves the expanded map, like closing a full-screen view.
   useEffect(() => {
-    const sync = () => setIsFullscreen(document.fullscreenElement === mapRef.current)
-    document.addEventListener('fullscreenchange', sync)
-    return () => document.removeEventListener('fullscreenchange', sync)
-  }, [])
-
-  // iPhone Safari only allows full screen for video, so the button is hidden there.
-  const toggleFullscreen = document.fullscreenEnabled
-    ? () => {
-        const request = document.fullscreenElement
-          ? document.exitFullscreen()
-          : mapRef.current?.requestFullscreen()
-        request?.catch(() => toast.error('Full screen is not available in this browser.'))
-      }
-    : undefined
+    if (!isExpanded) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsExpanded(false)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isExpanded])
 
   async function handlePlan(request: PlanRequest) {
     setBusy(true)
@@ -120,15 +112,15 @@ export default function App() {
       <main
         ref={mapRef}
         className={cn(
-          'relative scroll-mt-4 flex-col gap-3 px-4 pt-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:p-0',
+          'relative isolate scroll-mt-4 flex-col gap-3 px-4 pt-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:p-0',
           plan ? 'flex' : 'hidden',
-          isFullscreen && 'bg-background p-0',
+          isExpanded && 'fixed inset-0 z-40 flex bg-background p-0 lg:p-0',
         )}
       >
         <div
           className={cn(
             'h-[60svh] overflow-hidden rounded-xl ring-1 ring-foreground/10 lg:h-full lg:rounded-none lg:ring-0',
-            isFullscreen && 'h-full rounded-none ring-0',
+            isExpanded && 'h-full rounded-none ring-0',
           )}
         >
           <MapView
@@ -138,8 +130,8 @@ export default function App() {
             heatmap={heatmap}
             showHeatmap={showHeatmap}
             hour={hour}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={toggleFullscreen}
+            isExpanded={isExpanded}
+            onToggleExpanded={() => setIsExpanded((v) => !v)}
           />
         </div>
         {heatmap ? (
@@ -151,7 +143,7 @@ export default function App() {
             onShowHeatmapChange={setShowHeatmap}
             className={cn(
               'lg:absolute lg:inset-x-6 lg:bottom-6 lg:z-1000 lg:mx-auto lg:max-w-xl lg:shadow-lg',
-              isFullscreen && 'absolute inset-x-3 bottom-3 z-1000 mx-auto max-w-xl shadow-lg',
+              isExpanded && 'absolute inset-x-3 bottom-3 z-1000 mx-auto max-w-xl shadow-lg',
             )}
           />
         ) : (

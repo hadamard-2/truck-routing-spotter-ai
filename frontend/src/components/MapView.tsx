@@ -18,8 +18,8 @@ interface Props {
   heatmap: Heatmap | null
   showHeatmap: boolean
   hour: number
-  isFullscreen: boolean
-  onToggleFullscreen?: () => void
+  isExpanded: boolean
+  onToggleExpanded: () => void
 }
 
 const US_CENTER: [number, number] = [39.5, -98.35]
@@ -103,8 +103,8 @@ export function MapView({
   heatmap,
   showHeatmap,
   hour,
-  isFullscreen,
-  onToggleFullscreen,
+  isExpanded,
+  onToggleExpanded,
 }: Props) {
   const routes = plan?.routes ?? []
   const selected = routes.find((r) => r.id === selectedId) ?? null
@@ -130,7 +130,7 @@ export function MapView({
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <TrackContainerSize />
-      <MapControls isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
+      <MapControls isExpanded={isExpanded} onToggleExpanded={onToggleExpanded} />
       <FitToPlan plan={plan} />
       {heatmap && showHeatmap && <HeatGrid heatmap={heatmap} hour={hour} />}
 
