@@ -51,6 +51,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'routing.middleware.HealthCheckMiddleware',
     'django.middleware.security.SecurityMiddleware',
     # Plans and heatmaps are a few hundred kB of JSON that compresses well.
     'django.middleware.gzip.GZipMiddleware',

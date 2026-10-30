@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://REPLACE-WITH-LIGHTSAIL-URL/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://truck-routing-api.e2h51k721vrqw.us-east-1.cs.amazonlightsail.com/api/:path*" }
   ]
 }
